@@ -1,0 +1,58 @@
+# Render Infrastructure-as-Code Blueprint
+# Deploy Backend, Frontend, and Managed PostgreSQL with one click.
+# Reference: https://render.com/docs/blueprint-spec
+
+version: "1"
+
+services:
+  # 1. Backend Web Service (FastAPI + Uvicorn)
+  - type: web
+    name: shelfsense-backend
+    env: python
+    region: oregon
+    plan: free
+    rootDir: ShelfSense-store/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GNANI_API_KEY
+        sync: false
+      - key: GNANI_BASE_URL
+        value: https://api.vachana.ai
+      - key: DATABASE_URL
+        fromDatabase:
+          name: shelfsense-db
+          property: connectionString
+
+  # 2. Frontend Web Application (React + Vite SPA)
+  - type: web
+    name: shelfsense-storefront
+    env: static
+    region: oregon
+    plan: free
+    rootDir: ShelfSense-store/frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: shelfsense-backend
+          property: host
+
+databases:
+  # 3. PostgreSQL Database
+  - name: shelfsense-db
+    region: oregon
+    plan: free
+    databaseName: shelfsense
+    user: shelfsense_admin
