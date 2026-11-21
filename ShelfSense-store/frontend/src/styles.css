@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-surface text-on-surface antialiased font-body;
+}
+
+.serif-italic {
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-xs font-sans tracking-wider uppercase font-semibold transition focus:outline-none focus:ring-1 focus:ring-on-surface focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50;
+}
+.btn-primary {
+  @apply btn bg-accent text-on-surface hover:bg-accent-hover active:scale-[0.98] shadow-sm font-bold;
+}
+.btn-secondary {
+  @apply btn border border-border-subtle bg-surface-card text-on-surface hover:bg-surface-subtle;
+}
+.card {
+  @apply rounded-xl border border-border-subtle bg-surface-card shadow-editorial;
+}
+.input {
+  @apply w-full rounded-lg border border-border-subtle bg-[#FAF9F5] px-4 py-3 font-sans text-sm text-on-surface outline-none transition focus:border-on-surface focus:ring-1 focus:ring-on-surface placeholder:text-on-surface-muted/60;
+}
+.badge {
+  @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+}

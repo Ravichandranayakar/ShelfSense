@@ -1,0 +1,5 @@
+# Stepfun
+
+Access 3 Stepfun models through the OpenRouter unified API including Step 5 Preview, Step 3.7 Flash, and Step 3.5 Flash. Compare pricing, context windows, benchmarks, and capabilities between different Stepfun models.
+
+Stepfun tokens processed on OpenRouter

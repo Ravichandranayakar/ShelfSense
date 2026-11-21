@@ -1,0 +1,55 @@
+## Key facts
+
+## Model type
+
+198B total params / 11B activated params
+
+## Context length
+
+## Best for
+
+Optimized for agent and coding workloads
+
+## Core capabilities
+
+## ️ Native multimodal
+
+##  High-throughput reasoning
+
+## ️ Tool calling
+
+`tools` / `tool_choice` orchestration, supports multi-step task decomposition and plan execution.##  Complex reasoning
+
+## Reasoning effort
+
+`step-3.7-flash` supports three reasoning effort levels — pick one to match task complexity:
+| Effort | Best for | 
+|---|---|
+| `low` | Simple Q&A, summarization, rewriting, information extraction | 
+| `medium` | Default. General reasoning and multi-step tasks | 
+| `high` | Complex reasoning, math, planning, code analysis | 
+
+`reasoning_effort` to control the effort level; the Messages API uses `output_config.effort`. See the Quickstart for full call examples.## Get started
+
+## Multimodal quickstart
+
+## Cookbook
+
+## Mobile Agent
+
+## Chat Completion
+
+`POST /v1/chat/completions`OpenAI-compatible, with streaming and tool calling.
+
+## Pricing
+
+| Item | Price (per million tokens) | 
+|---|---|
+| Input (cache hit) | $0.04 | 
+| Input (cache miss) | $0.20 | 
+| Output | $1.15 | 
+
+## Framework support
+
+`step-3.7-flash` plugs reliably into popular Coding and Agent tools, well-suited to code generation, file editing, and complex task coordination in the terminal, IDE, or Agent workflows.
+View Step Plan integration guide →

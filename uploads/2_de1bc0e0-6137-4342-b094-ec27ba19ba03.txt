@@ -1,0 +1,65 @@
+![](https://platform.stepfun.ai/images/home-v2/v6_modelArt.png)
+
+### Step 5 Preview
+
+A new-generation frontier model built for real-world tasks
+
+# Step 5 Preview
+
+Advancing the Pareto Frontier
+
+Partner with us to accelerate AI application rollout
+
+## Models overview
+
+### Step 5 Preview
+
+A new-generation frontier model built for real-world tasks
+
+### StepAudio 3
+
+A family of models for speech recognition, real-time interaction, voice and music generation
+
+## Make your first call in three steps
+
+```
+from openai import OpenAI
+client = OpenAI(
+    api_key="YOUR_STEP_API_KEY",
+    base_url="https://api.stepfun.ai/v1",
+)
+response = client.chat.completions.create(
+    model="YOUR_MODEL_ID",
+    messages=[
+        {"role": "user", "content": "Hello, please introduce yourself in one sentence."}
+    ],
+)
+print(response.choices[0].message.content)
+```
+## Other ways to build
+
+Step Plan subscription
+
+One subscription for building with StepFun-from coding to agentic workflows
+
+Studio, no code required
+
+Try models straight in the browser, then wire up the API once you know it works
+
+## Next steps for building
+
+Developer Program
+
+Tokens and technical support for independent developers and early-stage teams
+
+Technical Support
+
+Developer community, enterprise enquiries, and rate-limit increase requests
+
+platform@stepfun.comDiscord community
+
+X account
+
+Get API key now
+
+Sign up and call every public model,usage-based billing
