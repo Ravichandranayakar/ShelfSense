@@ -32,7 +32,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # User Uploads & Media Assets
-uploads/
+uploads
 */uploads/
 media/
 .user_uploaded/
@@ -45,3 +45,8 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+uploads
+
+blueprint.md
+production-spec.md
+ATTRIBUTIONS.md

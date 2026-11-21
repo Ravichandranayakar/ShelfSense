@@ -10,25 +10,43 @@ Lean hackathon MVP:
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import json
+import logging
 import os
 import re
 import sqlite3
 import time
 import uuid
+import wave
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
+
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BASE_DIR.parent
-DB_PATH = Path(os.getenv("DATABASE_PATH", BASE_DIR / "store.db"))
+_db_env = os.getenv("DATABASE_PATH", "").strip()
+if _db_env:
+    DB_PATH = Path(_db_env)
+    if not DB_PATH.is_absolute():
+        DB_PATH = (BASE_DIR / DB_PATH).resolve()
+else:
+    DB_PATH = (BASE_DIR / "store.db").resolve()
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 LOW_STOCK_THRESHOLD = int(os.getenv("LOW_STOCK_THRESHOLD", "10"))
 STEPFUN_API_KEY = os.getenv("STEPFUN_API_KEY", "").strip()
 STEPFUN_BASE_URL = os.getenv("STEPFUN_BASE_URL", "https://api.stepfun.ai/v1").rstrip("/")
@@ -48,14 +66,35 @@ def load_env_file() -> None:
             key, value = line.split("=", 1)
             key = key.strip()
             value = value.strip().strip('"').strip("'")
-            if key and key not in os.environ:
+            if key:
                 os.environ[key] = value
 
 
+def get_ai_config() -> tuple[str | None, str, str, str]:
+    """Dynamically resolves active AI provider, api key, base url, and model."""
+    load_env_file()
+    gemini_key = os.getenv("GOOGLE_API_KEY", "").strip() or os.getenv("GEMINI_API_KEY", "").strip()
+    stepfun_key = os.getenv("STEPFUN_API_KEY", "").strip()
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip() or os.getenv("OPENAI_API_KEY", "").strip()
+
+    if gemini_key:
+        base_url = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai").rstrip("/")
+        model = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+        return "gemini", gemini_key, base_url, model
+    elif stepfun_key:
+        base_url = os.getenv("STEPFUN_BASE_URL", "https://api.stepfun.ai/v1").rstrip("/")
+        model = os.getenv("STEPFUN_MODEL", "step-3.7-flash")
+        return "stepfun", stepfun_key, base_url, model
+    elif openrouter_key:
+        base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+        model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
+        return "openrouter", openrouter_key, base_url, model
+
+    return None, "", "", ""
+
+
 load_env_file()
-STEPFUN_API_KEY = os.getenv("STEPFUN_API_KEY", "").strip()
-STEPFUN_BASE_URL = os.getenv("STEPFUN_BASE_URL", "https://api.stepfun.ai/v1").rstrip("/")
-STEPFUN_MODEL = os.getenv("STEPFUN_MODEL", "step-3.7-flash")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 DB_PATH = Path(os.getenv("DATABASE_PATH", BASE_DIR / "store.db"))
 LOW_STOCK_THRESHOLD = int(os.getenv("LOW_STOCK_THRESHOLD", "10"))
 
@@ -64,19 +103,81 @@ def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def db() -> sqlite3.Connection:
+class PgCursorWrapper:
+    def __init__(self, cursor: Any) -> None:
+        self._cur = cursor
+
+    def fetchone(self) -> Any:
+        return self._cur.fetchone()
+
+    def fetchall(self) -> list[Any]:
+        return self._cur.fetchall()
+
+    @property
+    def rowcount(self) -> int:
+        return self._cur.rowcount
+
+
+class PgConnectionWrapper:
+    def __init__(self, conn: Any) -> None:
+        self._conn = conn
+
+    def execute(self, sql: str, params: Any = None) -> Any:
+        cleaned = sql.strip().upper()
+        if cleaned in ("BEGIN IMMEDIATE", "BEGIN"):
+            return PgCursorWrapper(self._conn.cursor())
+        cur = self._conn.cursor()
+        pg_sql = sql.replace("?", "%s")
+        cur.execute(pg_sql, params or ())
+        return PgCursorWrapper(cur)
+
+    def executescript(self, script: str) -> None:
+        cur = self._conn.cursor()
+        cur.execute(script)
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
+
+    def close(self) -> None:
+        self._conn.close()
+
+
+def get_db_connection():
+    if DATABASE_URL and (DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://")) and PSYCOPG2_AVAILABLE:
+        try:
+            db_url = DATABASE_URL
+            if db_url.startswith("postgres://"):
+                db_url = "postgresql://" + db_url[len("postgres://"):]
+            if "127.0.0.1" not in db_url and "localhost" not in db_url and "sslmode" not in db_url:
+                separator = "&" if "?" in db_url else "?"
+                db_url = f"{db_url}{separator}sslmode=require"
+
+            pg_conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor, connect_timeout=8)
+            return PgConnectionWrapper(pg_conn), "postgresql"
+        except Exception as e:
+            logging.warning(f"PostgreSQL connection failed ({e}), falling back to SQLite WAL")
+    
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=30000")
+    return conn, "sqlite"
+
+
+def db():
+    conn, _ = get_db_connection()
     return conn
 
 
 class DbSession:
     """Context manager that commits/rolls back and always closes the connection."""
 
-    def __enter__(self) -> sqlite3.Connection:
+    def __enter__(self):
         self.conn = db()
         return self.conn
 
@@ -218,7 +319,7 @@ def search_products(
     in_stock_only: bool = True,
     limit: int = 6,
 ) -> list[dict[str, Any]]:
-    limit = max(1, min(int(limit or 6), 12))
+    limit = max(1, min(int(limit or 6), 100))
     sql = "SELECT * FROM products WHERE 1=1"
     params: list[Any] = []
     if in_stock_only:
@@ -237,13 +338,49 @@ def search_products(
         params.extend([like, like, like, like])
     with DbSession() as conn:
         rows = conn.execute(sql, params).fetchall()
+        if not rows and len(tokens) > 1:
+            relaxed_sql = "SELECT * FROM products WHERE 1=1"
+            relaxed_params: list[Any] = []
+            if in_stock_only:
+                relaxed_sql += " AND stock > 0"
+            if category:
+                relaxed_sql += " AND category = ?"
+                relaxed_params.append(category)
+            if max_price_paise is not None:
+                relaxed_sql += " AND price_paise <= ?"
+                relaxed_params.append(int(max_price_paise))
+            or_clauses = ["(lower(title) LIKE ? OR lower(description) LIKE ? OR lower(category) LIKE ? OR lower(tags) LIKE ?)"] * len(tokens[:8])
+            relaxed_sql += f" AND ({' OR '.join(or_clauses)})"
+            for token in tokens[:8]:
+                like = f"%{token}%"
+                relaxed_params.extend([like, like, like, like])
+            rows = conn.execute(relaxed_sql, relaxed_params).fetchall()
     products = [row_to_product(r) for r in rows]
+    
+    # Primary Field Relevance Gate: A genuine product match must match on title, tags, or category.
+    # Incidental mentions in description alone (e.g. "layer for bike commute" on a jacket) are discarded.
+    if tokens and products:
+        def has_primary_match(p: dict[str, Any]) -> bool:
+            primary_text = f"{p['title']} {p['category']} {' '.join(p['tags'])}".lower()
+            return any(t in primary_text for t in tokens)
+        
+        primary_products = [p for p in products if has_primary_match(p)]
+        # If no product matches title, tags, or category, this is an out-of-catalog item (e.g. 'bike')
+        products = primary_products
+
     required_attributes = required_attributes or {}
-    if required_attributes:
-        products = [p for p in products if all(p["attributes"].get(k) == v for k, v in required_attributes.items())]
+    if required_attributes and products:
+        # Prefer products matching required attributes, but keep candidates if strict filter is empty
+        strict_attr_matches = [p for p in products if all(p["attributes"].get(k) == v for k, v in required_attributes.items())]
+        if strict_attr_matches:
+            products = strict_attr_matches
     def score(p: dict[str, Any]) -> tuple:
-        matched = sum(1 for k, v in required_attributes.items() if p["attributes"].get(k) == v)
-        return (-matched, -p["stock"], p["price_paise"])
+        primary_text = f"{p['title']} {p['category']} {' '.join(p['tags'])}".lower()
+        primary_hits = sum(1 for t in tokens if t in primary_text)
+        desc_hits = sum(1 for t in tokens if t in p['description'].lower())
+        matched_attrs = sum(1 for k, v in required_attributes.items() if p["attributes"].get(k) == v)
+        # Heavily weight primary hits over description hits
+        return (-(primary_hits * 5 + desc_hits), -matched_attrs, -p["stock"], p["price_paise"])
     products.sort(key=score)
     return products[:limit]
 
@@ -303,17 +440,25 @@ SEARCH_TOOL = {
 }
 
 
-async def stepfun_chat(payload: dict[str, Any]) -> dict[str, Any]:
-    if not STEPFUN_API_KEY:
-        raise RuntimeError("STEPFUN_API_KEY is not configured")
+async def ai_chat(payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    provider, api_key, base_url, default_model = get_ai_config()
+    if not api_key:
+        raise RuntimeError("No AI API key is configured")
+
+    payload = dict(payload)
+    if "model" not in payload or not payload["model"]:
+        payload["model"] = default_model
+    if provider == "gemini" and not str(payload["model"]).startswith("gemini-"):
+        payload["model"] = default_model
+
     async with httpx.AsyncClient(timeout=AI_TIMEOUT_SECONDS) as client:
         resp = await client.post(
-            f"{STEPFUN_BASE_URL}/chat/completions",
-            headers={"Authorization": f"Bearer {STEPFUN_API_KEY}", "Content-Type": "application/json"},
+            f"{base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json=payload,
         )
         resp.raise_for_status()
-        return resp.json()
+        return resp.json(), provider
 
 
 def template_restock_draft(product: dict[str, Any], recent_units: int, threshold: int) -> str:
@@ -413,6 +558,14 @@ class SourcingRfpRequest(BaseModel):
     estimated_lost_paise: int = 0
 
 
+class FulfillDemandRequest(BaseModel):
+    query: str
+    category: str | None = None
+    title: str | None = None
+    price_paise: int | None = None
+    stock: int = 15
+
+
 def _log_demand_signal(query: str, filters: dict[str, Any]) -> None:
     """Silently capture an unmet demand signal. Never raises."""
     try:
@@ -434,7 +587,16 @@ def _log_demand_signal(query: str, filters: dict[str, Any]) -> None:
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "ai_configured": bool(STEPFUN_API_KEY), "model": STEPFUN_MODEL if STEPFUN_API_KEY else None, "low_stock_threshold": LOW_STOCK_THRESHOLD}
+    _, engine = get_db_connection()
+    provider, key, _, model = get_ai_config()
+    return {
+        "ok": True,
+        "database": engine,
+        "ai_configured": bool(key),
+        "ai_provider": provider,
+        "model": model if key else None,
+        "low_stock_threshold": LOW_STOCK_THRESHOLD,
+    }
 
 
 @app.get("/api/products")
@@ -555,10 +717,11 @@ async def restock_draft(req: RestockRequest):
         ).fetchone()["units"]
     draft = template_restock_draft(product, recent, LOW_STOCK_THRESHOLD)
     source = "template"
-    if STEPFUN_API_KEY:
+    provider, key, _, model = get_ai_config()
+    if key:
         try:
-            data = await stepfun_chat({
-                "model": STEPFUN_MODEL,
+            data, source = await ai_chat({
+                "model": model,
                 "messages": [
                     {"role": "system", "content": "You are an inventory operations assistant. Write a concise supplier restock email draft. Use only the supplied numbers. Do not claim the email was sent."},
                     {"role": "user", "content": f"Product: {product['title']} SKU: {product['sku']}. Current stock: {product['stock']}. Threshold: {LOW_STOCK_THRESHOLD}. Recent units sold: {recent}. Draft a restock request."},
@@ -569,7 +732,6 @@ async def restock_draft(req: RestockRequest):
             content = data["choices"][0]["message"].get("content")
             if content:
                 draft = content.strip()
-                source = "stepfun"
         except Exception:
             pass
     now = utcnow()
@@ -585,13 +747,27 @@ async def restock_draft(req: RestockRequest):
     return {"draft": draft, "source": source, "recent_units_sold": recent}
 
 
+def clean_text_reply(text: str) -> str:
+    if not text:
+        return ""
+    # Strip markdown bold/italic asterisks
+    text = re.sub(r"\*{1,3}", "", text)
+    # Strip emojis (unicode emoji & symbol blocks)
+    text = re.sub(r"[\U00010000-\U0010ffff]", "", text)
+    text = re.sub(r"[\u2600-\u27bf\u2300-\u23ff\u2b50\u200d\ufe0f]", "", text)
+    # Collapse multiple spaces
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 @app.post("/api/ai/shop")
 async def ai_shop(req: ShopRequest, request: Request):
     filters = local_intent(req.message)
     products: list[dict[str, Any]] = []
     reply = ""
     source = "fallback"
-    if STEPFUN_API_KEY:
+    provider, key, _, model = get_ai_config()
+    if key:
         try:
             user_content: Any = req.message
             if req.image_base64:
@@ -600,10 +776,24 @@ async def ai_shop(req: ShopRequest, request: Request):
                     {"type": "image_url", "image_url": {"url": f"data:{req.image_media_type or 'image/jpeg'};base64,{req.image_base64}"}},
                 ]
             messages = [
-                {"role": "system", "content": "You are Synqora ShelfSense, a shopping assistant for an Indian online store. Use the search_products tool for product requests. Prices are in INR paise. Recommend only products returned by the tool. If none match, say so honestly and suggest relaxing one constraint. Keep replies under 120 words."},
+                {
+                    "role": "system",
+                    "content": (
+                        "You are ShelfSense, an ultra-clean, minimalist shopping assistant. "
+                        "Use the search_products tool for all product requests. Prices are in INR paise. "
+                        "Recommend ONLY products returned by the tool. "
+                        "STRICT FORMAT RULES: "
+                        "1. Output clean, plain text only. NEVER use markdown symbols, asterisks, or bold tags (**). "
+                        "2. NEVER use emojis. No exceptions. "
+                        "3. If products match, write a single concise sentence under 15 words stating the recommendation and price in rupees (₹). "
+                        "4. If no products match or the item is not available, reply in ONE simple, direct sentence under 12 words "
+                        "(e.g., 'We do not currently stock bikes in our catalog.'). "
+                        "5. Never list store categories and never write long explanations."
+                    ),
+                },
                 {"role": "user", "content": user_content},
             ]
-            data = await stepfun_chat({"model": STEPFUN_MODEL, "messages": messages, "tools": [SEARCH_TOOL], "tool_choice": "auto", "max_tokens": 700, "temperature": 0.2})
+            data, source = await ai_chat({"model": model, "messages": messages, "tools": [SEARCH_TOOL], "tool_choice": "auto", "max_tokens": 700, "temperature": 0.2})
             msg = data["choices"][0]["message"]
             tool_calls = msg.get("tool_calls") or []
             if tool_calls:
@@ -619,19 +809,35 @@ async def ai_shop(req: ShopRequest, request: Request):
                 }
                 products = search_products(**filters)
                 messages.append(msg)
-                messages.append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps({"products": products, "no_results_reason": None if products else "No catalog product matched all constraints."})})
-                follow = await stepfun_chat({"model": STEPFUN_MODEL, "messages": messages, "max_tokens": 300, "temperature": 0.2})
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "content": json.dumps({
+                        "products": products,
+                        "no_results_reason": None if products else "No catalog product matched. In ONE plain sentence under 12 words with NO emojis and NO markdown asterisks, state that we do not currently stock this item.",
+                    }),
+                })
+                follow, _ = await ai_chat({"model": model, "messages": messages, "max_tokens": 300, "temperature": 0.2})
                 reply = (follow["choices"][0]["message"].get("content") or "").strip()
-                source = "stepfun"
+                # If Gemini explicitly concludes that the boutique does not stock the requested item, clear products
+                no_stock_indicators = [
+                    "do not currently stock", "don't currently stock", "don't carry",
+                    "do not carry", "could not find", "no in-stock", "no catalog product",
+                    "not in our inventory", "not part of our collection", "don't have"
+                ]
+                if any(ind in reply.lower() for ind in no_stock_indicators):
+                    products = []
             else:
-                products = search_products(**filters)
+                # Gemini answered without calling tools: it intentionally treated the request as non-catalog or conversational
+                products = []
                 reply = (msg.get("content") or "").strip()
-                source = "stepfun_no_tool"
+                source = f"{source}_no_tool"
         except Exception:
             products = []
             reply = ""
             source = "fallback"
-    if not products and source in ("fallback", "stepfun_no_tool"):
+    # ONLY fall back to deterministic database query if the AI API is offline or encountered an exception
+    if not products and source == "fallback":
         products = search_products(**filters)
     # Auto-log demand signal when no products matched after all attempts
     if not products:
@@ -640,7 +846,8 @@ async def ai_shop(req: ShopRequest, request: Request):
         if products:
             reply = f"I found {len(products)} in-stock option(s) that match your request. The closest match is {products[0]['title']} at ₹{products[0]['price_paise'] / 100:,.0f}."
         else:
-            reply = "I could not find an in-stock product matching all of those constraints. Try increasing the budget or removing one requirement."
+            reply = f"We do not currently stock '{req.message}' in our catalog."
+    reply = clean_text_reply(reply)
     return {"reply": reply, "products": products, "filters": filters, "source": source}
 
 
@@ -676,13 +883,19 @@ def demand_radar():
     """Aggregated unmet demand grouped by query + category for the merchant."""
     with DbSession() as conn:
         rows = conn.execute(
-            """SELECT query, category, attributes_json, max_budget_paise,
+            """SELECT query, category, MIN(attributes_json) AS attributes_json, max_budget_paise,
                       COUNT(*) AS signal_count,
                       MIN(created_at) AS first_seen,
                       MAX(created_at) AS last_seen
                FROM demand_signals
-               GROUP BY lower(query), category, max_budget_paise
+               GROUP BY query, category, max_budget_paise
                ORDER BY signal_count DESC
+               LIMIT 20"""
+        ).fetchall()
+        recent_rows = conn.execute(
+            """SELECT id, query, category, max_budget_paise, source, created_at
+               FROM demand_signals
+               ORDER BY created_at DESC
                LIMIT 20"""
         ).fetchall()
     signals = []
@@ -698,7 +911,68 @@ def demand_radar():
             "first_seen": r["first_seen"],
             "last_seen": r["last_seen"],
         })
-    return {"signals": signals, "total": len(signals)}
+    recent_signals = [dict(r) for r in recent_rows]
+    return {"signals": signals, "total": len(signals), "recent_signals": recent_signals}
+
+
+@app.post("/api/admin/demand/fulfill")
+def fulfill_demand(req: FulfillDemandRequest):
+    """Marks a demand request as fulfilled and ensures a matching product exists or is stocked in the store catalog."""
+    with DbSession() as conn:
+        sku = f"FUL-{uuid.uuid4().hex[:6].upper()}"
+        prod_id = f"prod_{uuid.uuid4().hex[:8]}"
+        title = req.title or req.query.strip().title()
+        category = req.category or "accessories"
+        price_paise = req.price_paise or 199900
+
+        # Intelligent image selection for fulfilled items
+        t_lower = (title + " " + (req.query or "")).lower()
+        if any(w in t_lower for w in ("backpack", "rolltop", "aeroshield", "featherweight", "commuter pack")):
+            image_url = "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=800&q=80"
+        elif any(w in t_lower for w in ("sling", "crossbody", "courier")):
+            image_url = "https://images.unsplash.com/photo-1622560480605-d83c853bc5c3?auto=format&fit=crop&w=800&q=80"
+        elif any(w in t_lower for w in ("walnut", "organizer", "station", "bamboo")):
+            image_url = "/products/prod_018.jpg"
+        elif any(w in t_lower for w in ("sleeve", "neoprene")):
+            image_url = "/products/prod_004.jpg"
+        elif any(w in t_lower for w in ("jacket", "rain")):
+            image_url = "/products/prod_009.jpg"
+        elif any(w in t_lower for w in ("stand", "aluminum")):
+            image_url = "/products/prod_025.jpg"
+        elif any(w in t_lower for w in ("hub", "usb")):
+            image_url = "/products/prod_014.jpg"
+        elif any(w in t_lower for w in ("bottle", "sipper")):
+            image_url = "/products/prod_012.jpg"
+        elif "umbrella" in t_lower:
+            image_url = "/products/prod_024.jpg"
+        elif "tote" in t_lower:
+            image_url = "/products/prod_023.jpg"
+        elif category == "bags":
+            image_url = "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=800&q=80"
+        elif category == "stationery":
+            image_url = "/products/prod_018.jpg"
+        else:
+            image_url = "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=800&q=80"
+
+        # Check if product with this title already exists
+        existing = conn.execute("SELECT * FROM products WHERE title LIKE ?", (f"%{title}%",)).fetchone()
+        if existing:
+            conn.execute("UPDATE products SET stock = stock + ?, updated_at = ? WHERE id = ?", (req.stock, utcnow(), existing["id"]))
+            product_id = existing["id"]
+            product_title = existing["title"]
+        else:
+            conn.execute(
+                """INSERT INTO products (id, sku, title, category, description, price_paise, stock, emoji, tags, attributes_json, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, '✨', '[]', ?, ?)""",
+                (prod_id, sku, title, category, f"Customer demand fulfilled: {req.query}", price_paise, req.stock, json.dumps({"image_url": image_url}), utcnow())
+            )
+            product_id = prod_id
+            product_title = title
+
+        # Clear unmet demand signal for this query
+        conn.execute("DELETE FROM demand_signals WHERE query = ?", (req.query,))
+
+    return {"ok": True, "product_id": product_id, "product_title": product_title, "stock_added": req.stock}
 
 
 @app.post("/api/admin/sourcing-rfp")
@@ -717,10 +991,11 @@ async def sourcing_rfp(req: SourcingRfpRequest):
         f"Regards,\nSynqora Sourcing Team"
     )
     source = "template"
-    if STEPFUN_API_KEY:
+    provider, key, _, model = get_ai_config()
+    if key:
         try:
-            data = await stepfun_chat({
-                "model": STEPFUN_MODEL,
+            data, source = await ai_chat({
+                "model": model,
                 "messages": [
                     {"role": "system", "content": "You are a professional procurement assistant. Write a formal supplier sourcing enquiry email. Be concise and professional. Do not add made-up numbers."},
                     {"role": "user", "content": (
@@ -737,7 +1012,396 @@ async def sourcing_rfp(req: SourcingRfpRequest):
             content = data["choices"][0]["message"].get("content")
             if content:
                 draft = content.strip()
-                source = "stepfun"
         except Exception:
             pass  # Fall back to template draft
     return {"draft": draft, "source": source}
+
+
+# ── Gnani.ai Voice Commerce Engine (Phase 1: REST STT & Timbre v3.0 TTS) ─────
+
+logger = logging.getLogger("shelfsense.voice")
+
+# Timbre v3.0 verified voice catalogue by Indic language
+GNANI_VOICES = {
+    "kn-IN": "Shruthi",      # Kannada
+    "hi-IN": "Shivani",      # Hindi
+    "en-IN": "Priyasharm",   # Indian English
+    "ta-IN": "Lakshmi",      # Tamil
+    "te-IN": "Swathi",       # Telugu
+    "mr-IN": "Sneha",        # Marathi
+    "bn-IN": "Sohini",       # Bengali
+    "gu-IN": "Vasudha",      # Gujarati
+    "ml-IN": "Lakshmidevi",  # Malayalam
+    "pa-IN": "Rajni",        # Punjabi
+}
+
+SUPPORTED_INDIC_LANGUAGES = [
+    {"code": "indic-auto", "name": "Auto Detect (Indic)", "native": "Auto Detect"},
+    {"code": "kn-IN", "name": "Kannada", "native": "ಕನ್ನಡ", "voice": "Shruthi"},
+    {"code": "hi-IN", "name": "Hindi", "native": "हिन्दी", "voice": "Shivani"},
+    {"code": "en-IN", "name": "English (India)", "native": "English", "voice": "Priyasharm"},
+    {"code": "ta-IN", "name": "Tamil", "native": "தமிழ்", "voice": "Lakshmi"},
+    {"code": "te-IN", "name": "Telugu", "native": "తెలుగు", "voice": "Swathi"},
+    {"code": "mr-IN", "name": "Marathi", "native": "मराठी", "voice": "Sneha"},
+    {"code": "bn-IN", "name": "Bengali", "native": "বাংলা", "voice": "Sohini"},
+    {"code": "gu-IN", "name": "Gujarati", "native": "ગુજરાતી", "voice": "Vasudha"},
+    {"code": "ml-IN", "name": "Malayalam", "native": "മലയാളം", "voice": "Lakshmidevi"},
+    {"code": "pa-IN", "name": "Punjabi", "native": "ਪੰਜਾਬੀ", "voice": "Rajni"},
+]
+
+def pcm_to_wav(pcm_bytes: bytes, sample_rate: int = 24000) -> bytes:
+    """Wraps raw 16-bit linear PCM audio into a standard RIFF/WAV format."""
+    if pcm_bytes.startswith(b"RIFF"):
+        return pcm_bytes
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm_bytes)
+    return buf.getvalue()
+
+# Catalogue domain keywords for Gnani Prisma keyword boosting (up to 200 terms supported)
+VOICE_CATALOG_KEYPHRASES = (
+    "ShelfSense, backpack, AeroShield, cordura, waterproof, windbreaker, jacket, commute, "
+    "earbuds, charger, USB-C, GaN, bottle, sipper, shoes, runners, trail, stationery, "
+    "organizer, laptop sleeve, rupee, paise, budget, discount, dispatch"
+)
+
+
+def get_gnani_config() -> dict[str, Any]:
+    load_env_file()
+    api_key = os.getenv("GNANI_API_KEY", "").strip()
+    base_url = os.getenv("GNANI_BASE_URL", "https://api.vachana.ai").rstrip("/")
+    stt_model = os.getenv("GNANI_STT_MODEL", "prisma-v3.0")
+    stt_lang = os.getenv("GNANI_STT_LANGUAGE", "indic-auto")
+    tts_model = os.getenv("GNANI_TTS_MODEL", "timbre-v3.0")
+    voices = dict(GNANI_VOICES)
+    if os.getenv("GNANI_TTS_VOICE_KN"):
+        voices["kn-IN"] = os.getenv("GNANI_TTS_VOICE_KN").strip()
+    if os.getenv("GNANI_TTS_VOICE_HI"):
+        voices["hi-IN"] = os.getenv("GNANI_TTS_VOICE_HI").strip()
+    if os.getenv("GNANI_TTS_VOICE_EN"):
+        voices["en-IN"] = os.getenv("GNANI_TTS_VOICE_EN").strip()
+    return {
+        "api_key": api_key,
+        "base_url": base_url,
+        "stt_model": stt_model,
+        "stt_lang": stt_lang,
+        "tts_model": tts_model,
+        "voices": voices,
+        "configured": bool(api_key),
+    }
+
+
+def log_voice_demand_signal(query: str, filters: dict[str, Any], language: str = "en-IN") -> None:
+    """Logs a voice-originated customer requirement to existing demand_signals schema."""
+    try:
+        with DbSession() as conn:
+            attrs = dict(filters.get("required_attributes") or {})
+            attrs["channel"] = "voice"
+            attrs["provider"] = "gnani_prisma"
+            attrs["language"] = language
+            conn.execute(
+                "INSERT INTO demand_signals (id, query, category, attributes_json, max_budget_paise, source, created_at) VALUES (?, ?, ?, ?, ?, 'voice', ?)",
+                (
+                    f"ds_{uuid.uuid4().hex[:12]}",
+                    query[:400],
+                    filters.get("category"),
+                    json.dumps(attrs),
+                    filters.get("max_price_paise"),
+                    utcnow(),
+                ),
+            )
+    except Exception as e:
+        logger.warning(f"Failed to record voice demand signal: {e}")
+
+
+class VoiceTranscribeRequest(BaseModel):
+    audio_base64: str = Field(..., description="Base64 encoded audio string")
+    content_type: str = Field("audio/wav", description="Audio MIME type")
+    language_code: str = Field("indic-auto", description="Spoken language code or indic-auto")
+
+
+class VoiceTtsRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500, description="Clean text to synthesize to speech")
+    language_code: str = Field("en-IN", description="Language code e.g. kn-IN, hi-IN, en-IN")
+    voice: str | None = Field(None, description="Optional Timbre v3.0 voice override")
+
+
+class VoiceShopRequest(BaseModel):
+    audio_base64: str | None = None
+    content_type: str = "audio/wav"
+    transcript: str | None = None
+    language_code: str = "indic-auto"
+
+
+@app.get("/api/voice/status")
+def voice_status():
+    """Returns voice engine configuration status without exposing private API credentials."""
+    cfg = get_gnani_config()
+    return {
+        "configured": cfg["configured"],
+        "provider": "gnani" if cfg["configured"] else "browser_speech_fallback",
+        "stt_model": cfg["stt_model"],
+        "tts_model": cfg["tts_model"],
+        "default_stt_language": cfg["stt_lang"],
+        "supported_languages": SUPPORTED_INDIC_LANGUAGES,
+    }
+
+
+@app.post("/api/voice/stt")
+async def voice_stt(
+    request: Request,
+    audio_file: UploadFile | None = File(None),
+    language_code: str = Form("indic-auto"),
+    req: VoiceTranscribeRequest | None = None,
+):
+    """
+    Speech-to-Text via Gnani Prisma v3.0 (REST endpoint).
+    Accepts either multipart audio_file OR JSON audio_base64.
+    """
+    cfg = get_gnani_config()
+    if not cfg["configured"]:
+        raise HTTPException(
+            503,
+            detail="Gnani AI voice service is not configured. Add GNANI_API_KEY to your .env file."
+        )
+
+    audio_bytes: bytes = b""
+    content_type: str = "audio/wav"
+    lang: str = language_code or cfg["stt_lang"]
+
+    if audio_file is not None:
+        audio_bytes = await audio_file.read()
+        content_type = audio_file.content_type or "audio/wav"
+    else:
+        # Check if JSON payload was supplied directly
+        b64_str = None
+        if req is not None and req.audio_base64:
+            b64_str = req.audio_base64
+            content_type = req.content_type or "audio/wav"
+            lang = req.language_code or lang
+        elif request.headers.get("content-type", "").startswith("application/json"):
+            try:
+                body = await request.json()
+                b64_str = body.get("audio_base64")
+                content_type = body.get("content_type", "audio/wav")
+                lang = body.get("language_code", lang)
+            except Exception:
+                pass
+
+        if b64_str:
+            try:
+                if "," in b64_str:
+                    b64_str = b64_str.split(",", 1)[1]
+                audio_bytes = base64.b64decode(b64_str)
+            except Exception as e:
+                raise HTTPException(400, f"Malformed base64 audio data: {e}")
+        else:
+            raise HTTPException(400, "No audio payload provided. Send audio_file or audio_base64.")
+
+    if len(audio_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Audio file exceeds maximum size limit of 10MB.")
+    if len(audio_bytes) < 100:
+        raise HTTPException(400, "Audio payload too small or empty.")
+
+    headers = {
+        "X-API-Key-ID": cfg["api_key"],
+    }
+    files = {
+        "audio_file": ("audio.wav", audio_bytes, content_type),
+    }
+    data = {
+        "model": cfg["stt_model"],
+        "language_code": lang,
+        "format": "transcribe",
+        "keyphrase": VOICE_CATALOG_KEYPHRASES,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(
+                f"{cfg['base_url']}/stt/v3",
+                headers=headers,
+                files=files,
+                data=data,
+            )
+            if resp.status_code == 401:
+                raise HTTPException(502, "Gnani API key authentication failed. Check GNANI_API_KEY in .env.")
+            elif resp.status_code == 402:
+                raise HTTPException(502, "Gnani API account credits exhausted.")
+            elif resp.status_code == 429:
+                raise HTTPException(429, "Gnani API rate limit reached. Please wait a moment.")
+            elif resp.status_code >= 400:
+                raise HTTPException(502, f"Gnani Prisma STT failed with status {resp.status_code}: {resp.text}")
+
+            result = resp.json()
+            transcript = (
+                result.get("transcript")
+                or result.get("text")
+                or (result.get("result", {}).get("transcript") if isinstance(result.get("result"), dict) else "")
+                or ""
+            ).strip()
+            detected_lang = result.get("detected_language") or result.get("language_code") or lang
+            confidence = float(result.get("confidence") or 0.95)
+
+            return {
+                "transcript": transcript,
+                "detected_language": detected_lang,
+                "confidence": confidence,
+                "provider": "gnani_prisma",
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Gnani STT connection error: {e}")
+        raise HTTPException(502, f"Voice recognition service unavailable: {e}")
+
+
+@app.post("/api/voice/tts")
+async def voice_tts(req: VoiceTtsRequest):
+    """
+    Text-to-Speech via Gnani Timbre v3.0 (REST endpoint).
+    Returns synthesized audio bytes.
+    """
+    cfg = get_gnani_config()
+    if not cfg["configured"]:
+        raise HTTPException(
+            503,
+            detail="Gnani AI voice service is not configured. Add GNANI_API_KEY to your .env file."
+        )
+
+    clean_text = clean_text_reply(req.text)
+    if not clean_text:
+        raise HTTPException(400, "Empty text provided for speech synthesis.")
+
+    target_lang = req.language_code or "en-IN"
+    selected_voice = req.voice or cfg["voices"].get(target_lang) or "Priyasharm"
+
+    headers = {
+        "X-API-Key-ID": cfg["api_key"],
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "text": clean_text,
+        "model": cfg["tts_model"],
+        "voice": selected_voice,
+        "language": target_lang,
+        "audio_format": "wav",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{cfg['base_url']}/api/v1/tts/inference",
+                headers=headers,
+                json=payload,
+            )
+            if resp.status_code == 401:
+                raise HTTPException(502, "Gnani API authentication failed.")
+            elif resp.status_code == 402:
+                raise HTTPException(502, "Gnani account credits exhausted.")
+            elif resp.status_code == 429:
+                raise HTTPException(429, "Gnani TTS rate limit reached.")
+            elif resp.status_code >= 400:
+                raise HTTPException(502, f"Gnani Timbre TTS failed with status {resp.status_code}: {resp.text}")
+
+            audio_bytes = pcm_to_wav(resp.content)
+
+            return Response(
+                content=audio_bytes,
+                media_type="audio/wav",
+                headers={"X-Gnani-Voice": selected_voice, "X-Gnani-Lang": target_lang},
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Gnani TTS error: {e}")
+        raise HTTPException(502, f"Speech synthesis service error: {e}")
+
+
+@app.post("/api/voice/shop")
+async def voice_shop(req: VoiceShopRequest):
+    """
+    Unified Multilingual Voice Shopping Pipeline:
+    1. Transcribes audio via Gnani Prisma v3.0 (or uses confirmed transcript).
+    2. Runs Gemini Flash-Lite intent search against live catalog inventory.
+    3. If unstocked, logs demand signal into demand_signals table.
+    4. Generates spoken AI recommendation via Gnani Timbre v3.0 if configured.
+    """
+    cfg = get_gnani_config()
+    transcript = (req.transcript or "").strip()
+    detected_lang = req.language_code or "indic-auto"
+
+    # Step 1: Speech-to-Text if audio payload was provided
+    if not transcript and req.audio_base64:
+        stt_res = await voice_stt(
+            request=Request(scope={"type": "http"}),
+            audio_file=None,
+            language_code=req.language_code,
+            req=VoiceTranscribeRequest(
+                audio_base64=req.audio_base64,
+                content_type=req.content_type,
+                language_code=req.language_code,
+            ),
+        )
+        transcript = stt_res.get("transcript", "")
+        detected_lang = stt_res.get("detected_language", detected_lang)
+
+    if not transcript:
+        raise HTTPException(400, "Could not extract or transcribe speech input.")
+
+    # Step 2: Pass transcript to existing AI Intent Shopping engine
+    ai_res = await ai_shop(ShopRequest(message=transcript), request=Request(scope={"type": "http"}))
+
+    products = ai_res.get("products", [])
+    reply = ai_res.get("reply", "")
+    filters = ai_res.get("filters", {})
+
+    # Step 3: Record Voice Demand Signal if catalog gap detected
+    demand_logged = False
+    if not products:
+        log_voice_demand_signal(transcript, filters, language=detected_lang)
+        demand_logged = True
+
+    # Step 4: Optional TTS audio synthesis if Gnani is active
+    tts_audio_base64 = None
+    if cfg["configured"] and reply:
+        try:
+            target_voice = cfg["voices"].get(detected_lang) or "Priyasharm"
+            tts_headers = {"X-API-Key-ID": cfg["api_key"], "Content-Type": "application/json"}
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                t_resp = await client.post(
+                    f"{cfg['base_url']}/api/v1/tts/inference",
+                    headers=tts_headers,
+                    json={
+                        "text": reply,
+                        "model": cfg["tts_model"],
+                        "voice": target_voice,
+                        "language": detected_lang if detected_lang != "indic-auto" else "en-IN",
+                        "audio_format": "wav",
+                    },
+                )
+                if t_resp.status_code == 200:
+                    wav_content = pcm_to_wav(t_resp.content)
+                    tts_audio_base64 = base64.b64encode(wav_content).decode("ascii")
+        except Exception as e:
+            logger.warning(f"Voice shop TTS generation skipped: {e}")
+
+    return {
+        "transcript": transcript,
+        "detected_language": detected_lang,
+        "reply": reply,
+        "products": products,
+        "demand_logged": demand_logged,
+        "filters": filters,
+        "audio_base64": tts_audio_base64,
+        "provider": "gnani_prisma" if cfg["configured"] else "fallback",
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

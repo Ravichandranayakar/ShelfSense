@@ -34,3 +34,95 @@ body {
 .badge {
   @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
 }
+
+.material-symbols-filled {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24 !important;
+}
+
+/* ── Cherry Blossom Voice Motion Layer Keyframes ── */
+@keyframes cherryShine {
+  0% { transform: translateX(-120%) rotate(25deg); }
+  100% { transform: translateX(250%) rotate(25deg); }
+}
+
+@keyframes oceanBlob {
+  0%, 100% {
+    border-radius: 40px 18px 45px 22px;
+  }
+  50% {
+    border-radius: 22px 45px 18px 40px;
+  }
+}
+
+@keyframes cherryPulseRing {
+  0% { transform: scale(0.92); opacity: 0.8; }
+  50% { transform: scale(1.18); opacity: 0.15; }
+  100% { transform: scale(0.92); opacity: 0.8; }
+}
+
+@keyframes soundWaveBar {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes fluidCornerSpread {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) translateY(-30px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes auraExpand {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.25);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes ripplePulse {
+  0% { transform: scale(0.92); opacity: 0.75; }
+  50% { transform: scale(1.1); opacity: 0.25; }
+  100% { transform: scale(0.92); opacity: 0.75; }
+}
+
+.animate-aura-expand {
+  animation: auraExpand 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-ripple-pulse {
+  animation: ripplePulse 2.4s ease-in-out infinite;
+}
+
+.animate-fluid-corner {
+  transform-origin: top right;
+  animation: fluidCornerSpread 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-cherry-shine {
+  animation: cherryShine 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-ocean-blob {
+  animation: oceanBlob 6s ease-in-out infinite;
+}
+
+.animate-cherry-ring {
+  animation: cherryPulseRing 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes waveDrift {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-3px) rotate(0.4deg); }
+}
+
+.animate-wave-drift {
+  animation: waveDrift 4.5s ease-in-out infinite;
+}

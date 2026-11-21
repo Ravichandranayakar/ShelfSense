@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getApiUrl } from '../services/api';
 
 // High-res imagery for demand radar clusters matching Stitch design
 const DEMAND_IMAGES = {
@@ -19,6 +20,73 @@ export default function MerchantDemandRadar({
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('volume');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [demandRadarData, setDemandRadarData] = useState({ signals: [], recent_signals: [] });
+  const [fulfilledItems, setFulfilledItems] = useState([]);
+  const [activeItems, setActiveItems] = useState([
+    {
+      id: 'DMD-0982',
+      clusterCode: 'DMD-0982',
+      badge: 'HIGH VOLUME // TOP UNMET NEED',
+      category: 'CARRY',
+      categoryLabel: 'Carry & Packs // Daily Transit',
+      firstCaptured: '18 days ago · Velocity: +44%',
+      title: 'Waterproof Lightweight Commuter Backpack for College',
+      description: 'Repeated customer queries seeking a lightweight (<900g), college-ready laptop backpack with IPX4+ waterproofing, dedicated 16-inch padded compartment, and minimalist matte silhouette devoid of large ostentatious logos.',
+      specs: ['Waterproof Ballistic / Ripstop', 'Sub-900g Featherweight', '16" Padded Laptop Sleeve', 'G-Hook or Roll-top Enclosure', 'Dual Water Bottle Stretch Pockets'],
+      queriesCount: 64,
+      progressWidth: '88%',
+      budgetRange: '₹1,800 – ₹2,500',
+      sweetSpot: '₹2,200',
+      recentQuery: 'Today, 14:22 IST',
+      location: 'Metro Campus Hub',
+      status: 'Under Review',
+      marginNote: 'High merchant margin potential (estimated 48-52%)',
+      imgKey: 'DMD-0982',
+      alt: 'Matte black waterproof rolltop backpack',
+    },
+    {
+      id: 'DMD-0941',
+      clusterCode: 'DMD-0941',
+      badge: 'EMERGING DEMAND // FAST MOVER',
+      category: 'CARRY',
+      categoryLabel: 'Carry & Packs // Modular Carry',
+      firstCaptured: '9 days ago · Velocity: +62%',
+      title: 'Weatherproof Crossbody Ergonomic Tech Sling (10–14L)',
+      description: 'Shoppers looking for a quick-access sling with ambidextrous strap, waterproof zippers, and internal organizers for iPad Mini, cables, and power bank.',
+      specs: ['Quick-Adjust Ambidextrous Strap', 'Matte Water-Resistant Shell', 'Fleece-Lined Tablet Pocket', 'Hidden Passport Pocket'],
+      queriesCount: 42,
+      progressWidth: '65%',
+      budgetRange: '₹1,400 – ₹1,900',
+      sweetSpot: '₹1,650',
+      recentQuery: 'Yesterday, 19:40 IST',
+      location: 'Bengaluru Tech Corridor',
+      status: 'Sourcing',
+      marginNote: 'Projected margin: 44-48%',
+      imgKey: 'DMD-0941',
+      alt: 'Technical crossbody sling bag',
+    },
+    {
+      id: 'DMD-0887',
+      clusterCode: 'DMD-0887',
+      badge: 'STEADY SPEC // REFINED NICHE',
+      category: 'DESK',
+      categoryLabel: 'Work & Study // Ergonomics',
+      firstCaptured: '24 days ago · Velocity: +18%',
+      title: 'Modular Solid Walnut & Steel Organizing Station',
+      description: 'Demand for a weighted, low-profile desktop station combining wireless charging mat, grooved phone/tablet dock, and pen rest without squeaky acrylic.',
+      specs: ['Solid American Walnut', 'Powder-Coated Steel Rail', 'Integrated Qi Pad Cutout', 'Cork Anti-Scratch Feet'],
+      queriesCount: 38,
+      progressWidth: '55%',
+      budgetRange: '₹1,200 – ₹1,800',
+      sweetSpot: '₹1,450',
+      recentQuery: '2 days ago',
+      location: 'Gurugram Studio District',
+      status: 'New',
+      marginNote: 'Projected margin: 52-56%',
+      imgKey: 'DMD-0887',
+      alt: 'Solid walnut and steel desk organizer',
+    },
+  ]);
 
   // Drawer & Modal States
   const [selectedDrawerItem, setSelectedDrawerItem] = useState(null);
@@ -62,15 +130,62 @@ export default function MerchantDemandRadar({
 
   const unreadCount = notifications.filter((n) => n.unread).length;
 
+  const fetchDemandRadar = async () => {
+    try {
+      const res = await fetch(getApiUrl('/api/admin/demand-radar'));
+      const data = await res.json();
+      setDemandRadarData(data || { signals: [], recent_signals: [] });
+    } catch {
+      // Graceful
+    }
+  };
+
+  useEffect(() => {
+    fetchDemandRadar();
+  }, []);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
+    await fetchDemandRadar();
     if (onRefreshData) {
       await onRefreshData();
     }
     setTimeout(() => {
       setIsRefreshing(false);
-      showToast('Merchant telemetry pipeline synchronized with live storefront queries.');
+      showToast?.('Merchant telemetry pipeline synchronized with live storefront queries.');
     }, 800);
+  };
+
+  const handleFulfillRequest = async (item) => {
+    try {
+      await fetch(getApiUrl('/api/admin/demand/fulfill'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: item.title,
+          category: item.category === 'DESK' ? 'stationery' : 'bags',
+          title: item.title,
+          price_paise: 219900,
+          stock: 15,
+        }),
+      });
+      setActiveItems((prev) => prev.filter((x) => x.id !== item.id));
+      setFulfilledItems((prev) => [
+        {
+          ...item,
+          fulfilledAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          stockAdded: 15,
+        },
+        ...prev,
+      ]);
+      showToast?.(`Supplied "${item.title}" to store catalog (15 units added). Demand gap closed!`);
+      if (onRefreshData) {
+        await onRefreshData();
+      }
+      fetchDemandRadar();
+    } catch (e) {
+      showToast?.(`Error fulfilling demand: ${e.message}`);
+    }
   };
 
   const handleOpenDrawer = (itemKey) => {
@@ -101,7 +216,7 @@ export default function MerchantDemandRadar({
 
   const handleGenerateRfq = async () => {
     try {
-      const res = await fetch('/api/admin/sourcing-rfp', {
+      const res = await fetch(getApiUrl('/api/admin/sourcing-rfp'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -193,7 +308,7 @@ export default function MerchantDemandRadar({
                     viewMode === 'active' ? 'bg-black text-white shadow-sm' : 'text-[#444748] hover:text-black'
                   }`}
                 >
-                  Active Requests (3)
+                  Active Requests ({activeItems.length})
                 </button>
                 <button
                   type="button"
@@ -202,7 +317,7 @@ export default function MerchantDemandRadar({
                     viewMode === 'empty' ? 'bg-black text-white shadow-sm' : 'text-[#444748] hover:text-black'
                   }`}
                 >
-                  All Fulfilled
+                  All Fulfilled {fulfilledItems.length > 0 ? `(${fulfilledItems.length})` : ''}
                 </button>
               </div>
             )}
@@ -286,7 +401,7 @@ export default function MerchantDemandRadar({
           </section>
 
           {/* Main Opportunities Section */}
-          {viewMode === 'active' ? (
+          {viewMode === 'active' && activeItems.length > 0 ? (
             <section className="w-full px-6 lg:px-12 pb-24 bg-[#fbf9f3]">
               <div className="max-w-7xl mx-auto">
                 {/* Section Toolbar */}
@@ -358,7 +473,7 @@ export default function MerchantDemandRadar({
                     </div>
 
                     <span className="h-9 inline-flex items-center px-3.5 bg-[#eae8e2] border border-[#dcdad4] rounded-full font-sans text-xs text-[#444748] font-bold">
-                      3 Opportunities
+                      {activeItems.length} Opportunities
                     </span>
                   </div>
                 </div>
@@ -366,7 +481,7 @@ export default function MerchantDemandRadar({
                 {/* Cards List */}
                 <div className="mt-8 flex flex-col gap-8">
                   {/* CARD 1: Hero Opportunity */}
-                  {(categoryFilter === 'ALL' || categoryFilter === 'CARRY') && (
+                  {activeItems.some((x) => x.id === 'DMD-0982') && (categoryFilter === 'ALL' || categoryFilter === 'CARRY') && (
                     <article className="w-full bg-white border border-[#dcdad4] hover:border-black transition-all rounded-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 shadow-sm">
                       {/* Image Frame */}
                       <div className="lg:col-span-4 bg-[#eae8e2] relative min-h-[300px] lg:min-h-full flex items-center justify-center p-6 border-b lg:border-b-0 lg:border-r border-[#dcdad4] group">
@@ -476,17 +591,25 @@ export default function MerchantDemandRadar({
                             <button
                               type="button"
                               onClick={() => handleOpenDrawer('DMD-0982')}
-                              className="px-4 py-2 bg-[#eae8e2] hover:bg-[#e4e2dd] border border-[#dcdad4] rounded text-[#1b1c18] font-mono text-xs uppercase tracking-wider font-semibold transition-colors"
+                              className="px-3.5 py-2 bg-[#eae8e2] hover:bg-[#e4e2dd] border border-[#dcdad4] rounded text-[#1b1c18] font-mono text-xs uppercase tracking-wider font-semibold transition-colors"
                             >
                               View Demand Details
                             </button>
                             <button
                               type="button"
+                              onClick={() => handleFulfillRequest(activeItems.find((x) => x.id === 'DMD-0982') || { id: 'DMD-0982', title: 'Waterproof Lightweight Commuter Backpack for College', category: 'CARRY' })}
+                              className="px-3.5 py-2 bg-[#c6f26a] hover:bg-black hover:text-[#c6f26a] text-black font-sans text-xs uppercase tracking-wider font-bold rounded transition-colors flex items-center gap-1.5 shadow-sm"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">task_alt</span>
+                              <span>Fulfill Request</span>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleOpenComposer('DMD-0982')}
-                              className="px-5 py-2 bg-black hover:bg-[#c6f26a] hover:text-black text-white font-sans text-xs uppercase tracking-wider font-bold rounded transition-colors flex items-center gap-1.5"
+                              className="px-4 py-2 bg-black hover:bg-[#c6f26a] hover:text-black text-white font-sans text-xs uppercase tracking-wider font-bold rounded transition-colors flex items-center gap-1.5"
                             >
                               <span className="material-symbols-outlined text-[16px]">draw</span>
-                              <span>Create Supplier Enquiry</span>
+                              <span>Supplier RFQ</span>
                             </button>
                           </div>
                         </div>
@@ -495,7 +618,7 @@ export default function MerchantDemandRadar({
                   )}
 
                   {/* CARD 2: Tech Sling */}
-                  {(categoryFilter === 'ALL' || categoryFilter === 'CARRY') && (
+                  {activeItems.some((x) => x.id === 'DMD-0941') && (categoryFilter === 'ALL' || categoryFilter === 'CARRY') && (
                     <article className="w-full bg-white border border-[#dcdad4] hover:border-black transition-all rounded-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 shadow-sm">
                       {/* Image Frame */}
                       <div className="lg:col-span-4 bg-[#eae8e2] relative min-h-[260px] lg:min-h-full flex items-center justify-center p-6 border-b lg:border-b-0 lg:border-r border-[#dcdad4] group">
@@ -604,17 +727,25 @@ export default function MerchantDemandRadar({
                             <button
                               type="button"
                               onClick={() => handleOpenDrawer('DMD-0941')}
-                              className="px-4 py-2 bg-[#eae8e2] hover:bg-[#e4e2dd] border border-[#dcdad4] rounded text-[#1b1c18] font-mono text-xs uppercase tracking-wider font-semibold transition-colors"
+                              className="px-3.5 py-2 bg-[#eae8e2] hover:bg-[#e4e2dd] border border-[#dcdad4] rounded text-[#1b1c18] font-mono text-xs uppercase tracking-wider font-semibold transition-colors"
                             >
                               View Demand Details
                             </button>
                             <button
                               type="button"
+                              onClick={() => handleFulfillRequest(activeItems.find((x) => x.id === 'DMD-0941') || { id: 'DMD-0941', title: 'Weatherproof Crossbody Ergonomic Tech Sling (10–14L)', category: 'CARRY' })}
+                              className="px-3.5 py-2 bg-[#c6f26a] hover:bg-black hover:text-[#c6f26a] text-black font-sans text-xs uppercase tracking-wider font-bold rounded transition-colors flex items-center gap-1.5 shadow-sm"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">task_alt</span>
+                              <span>Fulfill Request</span>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleOpenComposer('DMD-0941')}
-                              className="px-5 py-2 bg-black hover:bg-[#c6f26a] hover:text-black text-white font-sans text-xs uppercase tracking-wider font-bold rounded transition-colors flex items-center gap-1.5"
+                              className="px-4 py-2 bg-black hover:bg-[#c6f26a] hover:text-black text-white font-sans text-xs uppercase tracking-wider font-bold rounded transition-colors flex items-center gap-1.5"
                             >
                               <span className="material-symbols-outlined text-[16px]">draw</span>
-                              <span>Create Supplier Enquiry</span>
+                              <span>Supplier RFQ</span>
                             </button>
                           </div>
                         </div>
@@ -623,7 +754,7 @@ export default function MerchantDemandRadar({
                   )}
 
                   {/* CARD 3: Walnut & Steel Organizer */}
-                  {(categoryFilter === 'ALL' || categoryFilter === 'DESK') && (
+                  {activeItems.some((x) => x.id === 'DMD-0887') && (categoryFilter === 'ALL' || categoryFilter === 'DESK') && (
                     <article className="w-full bg-white border border-[#dcdad4] hover:border-black transition-all rounded-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 shadow-sm">
                       {/* Image Frame */}
                       <div className="lg:col-span-4 bg-[#eae8e2] relative min-h-[260px] lg:min-h-full flex items-center justify-center p-6 border-b lg:border-b-0 lg:border-r border-[#dcdad4] group">
@@ -732,17 +863,25 @@ export default function MerchantDemandRadar({
                             <button
                               type="button"
                               onClick={() => handleOpenDrawer('DMD-0887')}
-                              className="px-4 py-2 bg-[#eae8e2] hover:bg-[#e4e2dd] border border-[#dcdad4] rounded text-[#1b1c18] font-mono text-xs uppercase tracking-wider font-semibold transition-colors"
+                              className="px-3.5 py-2 bg-[#eae8e2] hover:bg-[#e4e2dd] border border-[#dcdad4] rounded text-[#1b1c18] font-mono text-xs uppercase tracking-wider font-semibold transition-colors"
                             >
                               View Demand Details
                             </button>
                             <button
                               type="button"
+                              onClick={() => handleFulfillRequest(activeItems.find((x) => x.id === 'DMD-0887') || { id: 'DMD-0887', title: 'Modular Solid Walnut & Steel Desktop Organizing Station', category: 'DESK' })}
+                              className="px-3.5 py-2 bg-[#c6f26a] hover:bg-black hover:text-[#c6f26a] text-black font-sans text-xs uppercase tracking-wider font-bold rounded transition-colors flex items-center gap-1.5 shadow-sm"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">task_alt</span>
+                              <span>Fulfill Request</span>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleOpenComposer('DMD-0887')}
-                              className="px-5 py-2 bg-black hover:bg-[#c6f26a] hover:text-black text-white font-sans text-xs uppercase tracking-wider font-bold rounded transition-colors flex items-center gap-1.5"
+                              className="px-4 py-2 bg-black hover:bg-[#c6f26a] hover:text-black text-white font-sans text-xs uppercase tracking-wider font-bold rounded transition-colors flex items-center gap-1.5"
                             >
                               <span className="material-symbols-outlined text-[16px]">draw</span>
-                              <span>Create Supplier Enquiry</span>
+                              <span>Supplier RFQ</span>
                             </button>
                           </div>
                         </div>
@@ -753,22 +892,110 @@ export default function MerchantDemandRadar({
               </div>
             </section>
           ) : (
-            /* Empty State Preview Section */
-            <section className="w-full px-6 lg:px-12 py-24 bg-[#fbf9f3]">
-              <div className="max-w-2xl mx-auto text-center py-16 px-8 border border-dashed border-[#dcdad4] rounded-2xl bg-white shadow-sm">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#e8f5e9] flex items-center justify-center text-[#2e7d32]">
-                  <span className="material-symbols-outlined text-[32px]">task_alt</span>
-                </div>
-                <h3 className="font-sans text-2xl font-bold text-[#1b1c18] mb-2">
-                  All Customer Requests Fulfilled
-                </h3>
-                <p className="font-body text-sm text-[#444748] max-w-md mx-auto mb-6 leading-relaxed">
-                  All recent customer queries have been successfully matched and supplied in your catalog. When shoppers submit new unfulfilled requests, they will automatically appear under Active Requests.
-                </p>
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#f0fdf4] border border-[#bbf7d0] font-mono text-xs text-[#166534]">
-                  <span className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse"></span>
-                  <span>Demand listener active · 0 pending gaps</span>
-                </div>
+            /* Fulfilled Requests or Empty State Preview Section */
+            <section className="w-full px-6 lg:px-12 py-12 bg-[#fbf9f3]">
+              <div className="max-w-7xl mx-auto">
+                {fulfilledItems.length > 0 ? (
+                  <div className="flex flex-col gap-6">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-[#dcdad4] gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#22c55e]"></span>
+                          <span className="font-mono text-xs text-[#166534] font-bold uppercase tracking-wider">
+                            Catalog Provisioning Complete
+                          </span>
+                        </div>
+                        <h3 className="font-sans text-2xl font-bold text-[#1b1c18] mt-1">
+                          Fulfilled Customer Requests ({fulfilledItems.length})
+                        </h3>
+                        <p className="font-body text-xs text-[#444748] mt-0.5">
+                          These customer demand clusters have been converted into active inventory in your live store catalog.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={onBackToStore}
+                        className="px-4 py-2 bg-black hover:bg-[#c6f26a] hover:text-black text-white font-sans text-xs uppercase tracking-wider font-bold rounded-full transition-colors flex items-center gap-1.5"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">storefront</span>
+                        <span>View in Storefront</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {fulfilledItems.map((item, idx) => (
+                        <div
+                          key={item.id || idx}
+                          className="bg-white border border-[#bbf7d0] rounded-xl p-5 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                              <span className="px-2.5 py-0.5 rounded-full bg-[#f0fdf4] text-[#166534] border border-[#bbf7d0] font-mono text-[10px] font-bold uppercase tracking-wider">
+                                ✓ Live in Store
+                              </span>
+                              <span className="font-mono text-[11px] text-[#444748]">
+                                {item.fulfilledAt ? `Fulfilled at ${item.fulfilledAt}` : 'Just now'}
+                              </span>
+                            </div>
+
+                            <h4 className="font-sans text-base font-bold text-[#1b1c18] mb-1.5 leading-snug">
+                              {item.title}
+                            </h4>
+
+                            <p className="font-body text-xs text-[#444748] line-clamp-2 mb-3 leading-relaxed">
+                              {item.description}
+                            </p>
+
+                            <div className="p-3 bg-[#f5f3ed] rounded-lg border border-[#eae8e2] font-mono text-xs space-y-1 mb-4">
+                              <div className="flex items-center justify-between text-[#1b1c18]">
+                                <span>Initial Stock Added:</span>
+                                <span className="font-bold text-[#166534]">+{item.stockAdded || 15} units</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[#444748]">
+                                <span>Target Selling Price:</span>
+                                <span className="font-bold text-[#1b1c18]">₹2,199</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[#444748]">
+                                <span>Category:</span>
+                                <span className="uppercase font-semibold">{item.category || 'Carry'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="pt-3 border-t border-[#eae8e2] flex items-center justify-between">
+                            <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[#166534]">
+                              <span className="material-symbols-outlined text-[15px]">check_circle</span>
+                              <span>Instant Search Enabled</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={onBackToStore}
+                              className="text-xs font-sans font-bold text-black hover:text-[#4b6700] underline uppercase tracking-wider"
+                            >
+                              Open in Shop →
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="max-w-2xl mx-auto text-center py-16 px-8 border border-dashed border-[#dcdad4] rounded-2xl bg-white shadow-sm">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#e8f5e9] flex items-center justify-center text-[#2e7d32]">
+                      <span className="material-symbols-outlined text-[32px]">task_alt</span>
+                    </div>
+                    <h3 className="font-sans text-2xl font-bold text-[#1b1c18] mb-2">
+                      All Customer Requests Fulfilled
+                    </h3>
+                    <p className="font-body text-sm text-[#444748] max-w-md mx-auto mb-6 leading-relaxed">
+                      All recent customer queries have been successfully matched and supplied in your catalog. When shoppers submit new unfulfilled requests, they will automatically appear under Active Requests.
+                    </p>
+                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#f0fdf4] border border-[#bbf7d0] font-mono text-xs text-[#166534]">
+                      <span className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse"></span>
+                      <span>Demand listener active · 0 pending gaps</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
           )}
@@ -850,9 +1077,33 @@ export default function MerchantDemandRadar({
                         <span className="material-symbols-outlined text-[16px] text-[#4b6700]">chat</span>
                         B. Anonymized Customer Queries Feed (Last 72 Hours)
                       </h4>
-                      <span className="font-mono text-[10px] text-[#444748]">3 Samples shown</span>
+                      <span className="font-mono text-[10px] text-[#444748]">
+                        {(demandRadarData?.recent_signals?.length || 0) + 3} Queries captured
+                      </span>
                     </div>
                     <div className="flex flex-col gap-2.5">
+                      {/* Live queries from demand_signals table */}
+                      {demandRadarData?.recent_signals?.map((sig, idx) => (
+                        <div key={sig.id || idx} className="p-3 bg-white border border-[#bbf7d0] rounded-lg shadow-xs">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="px-1.5 py-0.5 rounded bg-[#f0fdf4] text-[#166534] border border-[#bbf7d0] font-mono text-[9px] font-bold uppercase">
+                              Live Request
+                            </span>
+                            <span className="font-mono text-[10px] text-[#444748]">
+                              Category: {sig.category || 'General'}
+                            </span>
+                          </div>
+                          <p className="font-body text-xs text-[#1b1c18] italic leading-relaxed font-medium">
+                            "{sig.query}"
+                          </p>
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#eae8e2] font-mono text-[10px] text-[#444748]">
+                            <span>Verified Shopper #{sig.id ? `SIG-${sig.id}` : `S-${8900 + idx}`}</span>
+                            <span>{sig.created_at ? new Date(sig.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}</span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Baseline Verified Samples */}
                       <div className="p-3 bg-white border border-[#dcdad4] rounded-lg">
                         <p className="font-body text-xs text-[#1b1c18] italic leading-relaxed">
                           "Need a waterproof laptop backpack for my daily metro ride to campus, under ₹2,500 with water bottle sleeve."
@@ -1156,17 +1407,19 @@ export default function MerchantDemandRadar({
         </main>
       )}
 
-      {/* 4. LUXURY ATELIER FOOTER */}
-      <footer className="w-full bg-[#f0eee8] border-t border-[#dcdad4] py-12 px-6 lg:px-12 mt-16 font-mono text-xs text-[#444748]">
+      {/* Merchant Console Footer */}
+      <footer className="w-full bg-[#f0eee8] border-t border-[#dcdad4] py-8 px-6 lg:px-12 mt-16 font-mono text-xs text-[#444748]">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-black">© 2025 SHELFSENSE ATELIER SYSTEMS</span>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-black">ShelfSense Merchant Console</span>
             <span>·</span>
-            <span>DELHI / BENGALURU</span>
+            <span>Real-time Demand Telemetry &amp; Inventory Orchestration</span>
           </div>
-          <div className="flex items-center gap-6">
-            <span>UNMET DEMAND RADAR V2.4</span>
-            <span className="text-black font-bold">ALL RIGHTS RESERVED</span>
+          <div className="flex items-center gap-4">
+            <span className="inline-flex items-center gap-1.5 text-[#166534]">
+              <span className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse"></span>
+              Storefront Synced
+            </span>
           </div>
         </div>
       </footer>

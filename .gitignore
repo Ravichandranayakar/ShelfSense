@@ -1,0 +1,44 @@
+# Environment & Secrets (Never commit .env to GitHub)
+.env
+.env*.local
+!.env.example
+
+# Python virtual environment & caches
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# Databases & WAL logs
+*.db
+*.db-*
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# Node dependencies & Vite production builds
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# User Uploads & Temporary Media (keeps files on disk, ignores in git)
+uploads/
+*/uploads/
+media/
+.user_uploaded/
+
+# Operating System & IDE junk
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo

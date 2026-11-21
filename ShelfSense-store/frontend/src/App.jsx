@@ -1,65 +1,59 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SearchResultsView from './components/SearchResultsView';
 import MerchantDemandRadar from './components/MerchantDemandRadar';
+import { startHybridVoiceSession } from './utils/voiceTranscriber';
+import { api } from './services/api';
 
 const inr = (paise) => `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
-
-async function api(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
-  return data;
-}
 
 // Curated studio-grade imagery for all 25 catalog products
 const PRODUCT_IMAGES = {
   // Bags & Packs
-  prod_001: 'https://lh3.googleusercontent.com/aida/ALJJyrCDayMPVMwmftjoMJiksmYQOMzSMi_j0HHWvM1X1vzc8il-yoyFcOe9YEcbO2e9_-9oqmsZomuHCbVKfQ8gZqr5b2Z5FzknQ5ZgHdoL5oWAeG1hwi_UTOF26beq79LkQiEkT7c3VE860t81ARwBz8c88xY1gIFyxcv2IQywpfOh7FdueoJMEVJwMxF54-b2tTdvzFMFl2Oog6nyXSKlunTN3iQaMmQ6YtLAjGzaNqzqhw',
-  prod_002: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB1K2QeEqrgGLd4lk8fq8z1OAYcEYb0Ne4Jdq8oft40r2kTyR8Nqib0LPyTlHm5xSECYeM0zzrZArDeR-K3dF8aoQYyMxs84SDcWuCZeChQbjdDUIosERHsDkZtngxJg-GtjWyqCHfrJGblGMXHj_Lr-A84tAO6ev1Kk6c-9w6AeZFXQFh5mOP6CiuzcW3cCp4vRrcJARBmL5F4sh6m8krVTUzj8JvL6y4LvzNAi-0g9mA6PdBJM61w3f2yp5J592vYpcWIg5O2',
-  prod_003: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC9-lt0FnmS1wY4x6lJswI5D3Wele8j1ChfaYqdB0v6llDFfNbyo79FvrcmzHUyEmUQDl4rNAIfDad_G-tYfNloKGWVvKeYSRi7x24HTY3ebE5QyONruYaKgCIuYQFQIUxM6cWh_qdE__0r_Zy3jMaRJQYbwycRJg3rbl20KLw2DbaKFnRA679IWHwxaB_Ah62x27KhQ42BWcQWg_-sbpqnCz49s_DNdGtzFIP0zh9TwTxBhQoe2S02rolyYYKlnvx7NQRyDLvw',
-  prod_023: 'https://images.unsplash.com/photo-1597484661643-2f5fef640dd1?auto=format&fit=crop&w=800&q=80',
+  prod_001: 'https://images.unsplash.com/photo-1546938576-6e6a64f317cc?auto=format&fit=crop&w=1200&q=80',
+  prod_002: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=800&q=80',
+  prod_003: 'https://images.unsplash.com/photo-1622560480605-d83c853bc5c3?auto=format&fit=crop&w=800&q=80',
+  prod_023: '/products/prod_023.jpg',
 
   // Tech & Everyday Carry Accessories
-  prod_004: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=800&q=80',
+  prod_004: '/products/prod_004.jpg',
   prod_005: 'https://images.unsplash.com/photo-1603302576837-37561b2e2302?auto=format&fit=crop&w=800&q=80',
   prod_011: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?auto=format&fit=crop&w=800&q=80',
-  prod_012: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=800&q=80',
-  prod_024: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=800&q=80',
-  prod_025: 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?auto=format&fit=crop&w=800&q=80',
+  prod_012: '/products/prod_012.jpg',
+  prod_024: '/products/prod_024.jpg',
+  prod_025: '/products/prod_025.jpg',
 
   // Trail & Urban Footwear
-  prod_006: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAPF89VclwIf4yZy8pbD-qyRoA38hVnlCypZa5q1AgWWeYNthDu2xzb6SuaLim-BqnGkmf9kwgaqUgyUZm6Mw3yGb_4tutVI9aR9Vpn0zzn8z1fd37LAcdaL2Ud1V73nPO3gOw2CThilKvtYlrQ1EC_1u2EmnB9zM3gXpv9mLtDKvpdGacMn3l0EFRoIuAsud5FadfQZiRds3jXBh5rWm3GqKXwh-cZycSN3fYH2AAk_NlqlATryhvpUM7PQEFmSv9nKaqx1s87',
+  prod_006: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=800&q=80',
   prod_007: 'https://images.unsplash.com/photo-1525966222134-fcfa99b8ae77?auto=format&fit=crop&w=800&q=80',
   prod_008: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80',
 
   // Technical Apparel
-  prod_009: 'https://images.unsplash.com/photo-1548883354-7622d03aca27?auto=format&fit=crop&w=800&q=80',
+  prod_009: '/products/prod_009.jpg',
   prod_010: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=800&q=80',
 
   // Focus Hardware & Electronics
   prod_013: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80',
-  prod_014: 'https://images.unsplash.com/photo-1625842268584-8f3296236761?auto=format&fit=crop&w=800&q=80',
-  prod_015: 'https://lh3.googleusercontent.com/aida/ALJJyrBnEm1aN7_cXRoN8MIFFcBjGMLjQ153GKjhVBkc821xQ7JQSYpx4ryg2xM04EP75u9Q0eczECFejo0AOEdU4MPqkySdNGWHzPtsqO-7YUYYDOsEH-CAxA1lVVSjd60OUkEhf5CFHYJ64F3cz23y2oi_o4qlfgp5qHF9UbXmjbk2_a06yYZ3ges2dBACNaM9GYc0jWf64l3OuxrGM8gRz7DzEl-BwR059PV1_4FdS76qsw',
+  prod_014: '/products/prod_014.jpg',
+  prod_015: 'https://images.unsplash.com/photo-1615663245857-ac93bb7c39e7?auto=format&fit=crop&w=800&q=80',
   prod_016: 'https://images.unsplash.com/photo-1545454675-3531b543be5d?auto=format&fit=crop&w=800&q=80',
-  prod_017: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3GOy7W3-IkEKIfRFo4Q4v-HwTZDquEbEp6BvmiGWd77WF1KGZLjS-e4W__CjJkp5tP22gE2qv00A6zSQ6oCfWlsT_sekV8sUaQ-L6N1jgTaml6tn7WtWVy6Zx3rtKz3xm7KnNhIKNBNp9uWjMpOsAVYWQ4GRTX8YP0d-HpNf6Y4pun6_vw4lT3MEuWeJgYKGiADuLAywLwpPbj0F2C1jHBxuy_yiRVHeX-yB3hTO3iN26M3WsgDqk8ZsZFmZ5rI4LSBNezueP',
+  prod_017: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?auto=format&fit=crop&w=800&q=80',
   prod_021: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=800&q=80',
   prod_022: 'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?auto=format&fit=crop&w=800&q=80',
 
   // Work & Study Stationery
-  prod_018: 'https://lh3.googleusercontent.com/aida/ALJJyrBVL1QWcVDxWLI8O9CMZm347a1ANECXSEN63XNirM44ooLbCcmoJ62uMXVWxQL89zRsvv1cFly7PYjqTXMg3Cp7_H11qWuv4J7lzXIIQ3YTtcO4D6FmYVcuJDhb-eG68WbG25VolLm68U2UnLy0QOqdIOp06oKjrRoEl4tF1qV_GpbWOGdHIUwuyWKiz1EC9E3uTq6FsWgEC22zm4oYN5X9acRd8qhSBpujlcRx5hfeyQ',
+  prod_018: '/products/prod_018.jpg',
   prod_019: 'https://images.unsplash.com/photo-1531346878377-a5be20888e57?auto=format&fit=crop&w=800&q=80',
   prod_020: 'https://images.unsplash.com/photo-1583485088034-697b5bc54ccd?auto=format&fit=crop&w=800&q=80',
 };
 
 const CATEGORY_ITEMS = [
-  { id: 'bags', title: 'Travel & Backpacks', emoji: '🎒', desc: 'Waterproof rolltops & commuter slings' },
-  { id: 'stationery', title: 'Work & Study', emoji: '🪵', desc: 'Solid walnut organizers & desk ergonomics' },
-  { id: 'accessories', title: 'Everyday Tech & Carry', emoji: '⚡', desc: 'Minimalist cables, sleeves & gear' },
-  { id: 'shoes', title: 'Trail & Footwear', emoji: '👟', desc: 'Ergonomic urban runners & trail shoes' },
-  { id: 'electronics', title: 'Focus Hardware', emoji: '🎧', desc: 'Mechanical peripherals & acoustics' },
+  { id: 'all', title: 'All Collections', icon: 'grid_view', desc: 'Browse full atelier catalog' },
+  { id: 'bags', title: 'Travel & Backpacks', icon: 'backpack', desc: 'Waterproof rolltops & commuter slings' },
+  { id: 'apparel', title: 'Technical Apparel', icon: 'checkroom', desc: 'Weatherproof outerwear & layers' },
+  { id: 'electronics', title: 'Focus Hardware', icon: 'headphones', desc: 'Mechanical peripherals & acoustics' },
+  { id: 'accessories', title: 'Everyday Tech & Carry', icon: 'devices', desc: 'Minimalist cables, sleeves & gear' },
+  { id: 'shoes', title: 'Trail & Footwear', icon: 'footprint', desc: 'Ergonomic urban runners & trail shoes' },
+  { id: 'stationery', title: 'Work & Study', icon: 'edit_note', desc: 'Solid walnut organizers & desk ergonomics' },
 ];
 
 function Toast({ message, visible, onHide }) {
@@ -80,10 +74,50 @@ function Toast({ message, visible, onHide }) {
   );
 }
 
+export function getProductImage(product) {
+  if (!product) return 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=800&q=80';
+  if (PRODUCT_IMAGES[product.id]) return PRODUCT_IMAGES[product.id];
+  if (product.attributes?.image_url) return product.attributes.image_url;
+  if (product.image_url) return product.image_url;
+
+  const text = `${product.title || ''} ${product.description || ''} ${(product.tags || []).join(' ')}`.toLowerCase();
+  if (anyWord(text, ['backpack', 'rolltop', 'aeroshield', 'featherweight', 'commuter pack'])) {
+    return PRODUCT_IMAGES.prod_001;
+  }
+  if (anyWord(text, ['sling', 'crossbody', 'courier'])) return PRODUCT_IMAGES.prod_003;
+  if (anyWord(text, ['tote'])) return PRODUCT_IMAGES.prod_023;
+  if (anyWord(text, ['sleeve', 'neoprene'])) return PRODUCT_IMAGES.prod_004;
+  if (anyWord(text, ['organizer', 'walnut', 'station', 'bamboo'])) return PRODUCT_IMAGES.prod_018;
+  if (anyWord(text, ['stand', 'riser'])) return PRODUCT_IMAGES.prod_025;
+  if (anyWord(text, ['hub', 'dock', 'usb'])) return PRODUCT_IMAGES.prod_014;
+  if (anyWord(text, ['charger', 'gan', 'power bank'])) return PRODUCT_IMAGES.prod_010;
+  if (anyWord(text, ['bottle', 'sipper', 'flask'])) return PRODUCT_IMAGES.prod_012;
+  if (anyWord(text, ['umbrella'])) return PRODUCT_IMAGES.prod_024;
+  if (anyWord(text, ['jacket', 'rain', 'outerwear'])) return PRODUCT_IMAGES.prod_009;
+  if (anyWord(text, ['shoe', 'runner', 'sneaker', 'trail'])) return PRODUCT_IMAGES.prod_006;
+  if (anyWord(text, ['earbud', 'headphone', 'audio', 'anc'])) return PRODUCT_IMAGES.prod_013;
+  if (anyWord(text, ['keyboard', 'switch', 'mouse'])) return PRODUCT_IMAGES.prod_015;
+  if (anyWord(text, ['lamp', 'light'])) return PRODUCT_IMAGES.prod_021;
+
+  const cat = (product.category || '').toLowerCase();
+  if (cat === 'bags') return PRODUCT_IMAGES.prod_001;
+  if (cat === 'accessories') return PRODUCT_IMAGES.prod_012;
+  if (cat === 'electronics') return PRODUCT_IMAGES.prod_010;
+  if (cat === 'stationery') return PRODUCT_IMAGES.prod_018;
+  if (cat === 'apparel') return PRODUCT_IMAGES.prod_009;
+  if (cat === 'shoes') return PRODUCT_IMAGES.prod_006;
+
+  return PRODUCT_IMAGES.prod_001;
+}
+
+function anyWord(text, words) {
+  return words.some((w) => text.includes(w));
+}
+
 function ProductCard({ product, onAdd, onWishlist, isWished }) {
   const isOutOfStock = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 5;
-  const imgUrl = PRODUCT_IMAGES[product.id];
+  const imgUrl = getProductImage(product);
 
   return (
     <article id={`prod-${product.id}`} className="group relative bg-surface-card border border-border-subtle rounded-2xl overflow-hidden hover:border-on-surface transition-all duration-500 flex flex-col justify-between">
@@ -93,11 +127,15 @@ function ProductCard({ product, onAdd, onWishlist, isWished }) {
             <img
               alt={product.title}
               src={imgUrl}
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=800&q=80';
+              }}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
             />
           ) : (
-            <div className="flex w-full h-full items-center justify-center bg-surface-subtle text-5xl group-hover:scale-105 transition-transform duration-700 ease-out">
-              {product.emoji || '📦'}
+            <div className="flex w-full h-full items-center justify-center bg-surface-subtle group-hover:scale-105 transition-transform duration-700 ease-out">
+              <span className="material-symbols-outlined text-5xl text-on-surface-muted/60">inventory_2</span>
             </div>
           )}
 
@@ -127,18 +165,21 @@ function ProductCard({ product, onAdd, onWishlist, isWished }) {
               }`}
             onClick={() => onWishlist(product.id)}
           >
-            <span className="material-symbols-outlined text-[18px]">
+            <span
+              className={`material-symbols-outlined text-[18px] ${isWished ? 'material-symbols-filled text-rose-600' : ''}`}
+              style={isWished ? { fontVariationSettings: "'FILL' 1" } : undefined}
+            >
               {isWished ? 'favorite' : 'favorite_border'}
             </span>
           </button>
         </div>
 
         <div className="p-6">
-          <div className="flex items-baseline justify-between gap-3">
-            <h3 className="font-sans text-lg font-bold uppercase tracking-tight text-on-surface group-hover:text-black line-clamp-1">
+          <div className="flex items-start justify-between gap-3 min-h-[3.25rem]">
+            <h3 className="font-sans text-base sm:text-lg font-bold uppercase tracking-tight text-on-surface group-hover:text-black leading-snug line-clamp-2">
               {product.title}
             </h3>
-            <span className="font-sans text-lg font-bold text-on-surface whitespace-nowrap">
+            <span className="font-sans text-base sm:text-lg font-bold text-on-surface whitespace-nowrap shrink-0 mt-0.5">
               {inr(product.price_paise)}
             </span>
           </div>
@@ -218,14 +259,14 @@ function CartDrawer({ open, onClose, cart, products, onQty, onCheckout, checkout
           )}
 
           {items.map(({ product, qty }) => {
-            const itemImg = PRODUCT_IMAGES[product.id];
+            const itemImg = getProductImage(product);
             return (
               <div key={product.id} className="flex items-center gap-4 rounded-xl border border-border-subtle bg-surface-card p-4">
                 <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-surface-subtle overflow-hidden flex-shrink-0 border border-border-subtle">
                   {itemImg ? (
                     <img src={itemImg} alt={product.title} className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-2xl">{product.emoji || '📦'}</span>
+                    <span className="material-symbols-outlined text-2xl text-on-surface-muted">inventory_2</span>
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -259,7 +300,7 @@ function CartDrawer({ open, onClose, cart, products, onQty, onCheckout, checkout
                 ORDER ID: <strong>{checkoutState.order.id}</strong> · {inr(checkoutState.order.total_paise)}
               </p>
               <p className="mt-1 text-[11px] text-on-surface-muted">
-                Inventory decremented atomically. Outbox transaction queued.
+                Order confirmed. Your package is being prepared for dispatch.
               </p>
             </div>
           )}
@@ -282,11 +323,93 @@ function CartDrawer({ open, onClose, cart, products, onQty, onCheckout, checkout
             disabled={items.length === 0 || checkoutState.loading}
             onClick={onCheckout}
           >
-            {checkoutState.loading ? 'Processing atomic lock…' : 'Complete Checkout'}
+            {checkoutState.loading ? 'Securing your order…' : 'Complete Checkout'}
           </button>
           <p className="mt-2.5 text-center font-mono text-[10px] text-on-surface-muted">
-            IMMEDIATE SQLITE WAL COMMIT · IDEMPOTENT TRANSACTION
+            SECURE 256-BIT ENCRYPTION · INSTANT CONFIRMATION
           </p>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function WishlistDrawer({ open, onClose, wishlist, products, onAddToCart, onRemoveWishlist }) {
+  const wishItems = Object.entries(wishlist)
+    .filter(([_, isWishlisted]) => isWishlisted)
+    .map(([id]) => products.find((p) => p.id === id))
+    .filter(Boolean);
+
+  return (
+    <div className={`fixed inset-0 z-50 ${open ? '' : 'pointer-events-none'}`}>
+      <div
+        className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${open ? 'opacity-100' : 'opacity-0'}`}
+        onClick={onClose}
+      />
+      <aside
+        className={`absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-surface border-l border-border-subtle shadow-2xl transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'
+          }`}
+      >
+        <div className="flex items-center justify-between border-b border-border-subtle p-6 bg-surface-card">
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-[20px] text-rose-600">favorite</span>
+            <span className="font-sans font-bold text-lg uppercase tracking-tight text-on-surface">Your Wishlist</span>
+            <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-sans text-[11px] font-bold">
+              {wishItems.length}
+            </span>
+          </div>
+          <button className="p-1 rounded text-on-surface-muted hover:text-on-surface transition-colors" onClick={onClose}>
+            <span className="material-symbols-outlined text-[20px]">close</span>
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto p-6">
+          {wishItems.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <span className="material-symbols-outlined text-4xl mb-3 text-rose-300">favorite_border</span>
+              <p className="font-sans text-sm font-bold uppercase tracking-wider text-on-surface">Your Wishlist is empty</p>
+              <p className="mt-1 font-body text-xs text-on-surface-muted">Tap the heart icon on any product to save it for later.</p>
+            </div>
+          )}
+
+          {wishItems.map((product) => {
+            const itemImg = getProductImage(product);
+            return (
+              <div key={product.id} className="flex items-center gap-4 rounded-xl border border-border-subtle bg-surface-card p-4">
+                <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-surface-subtle overflow-hidden flex-shrink-0 border border-border-subtle">
+                  {itemImg ? (
+                    <img src={itemImg} alt={product.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="material-symbols-outlined text-2xl text-on-surface-muted">inventory_2</span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="text-[10px] font-mono font-bold uppercase text-on-surface-muted block">{product.category}</span>
+                  <p className="truncate font-sans text-xs font-bold uppercase text-on-surface mt-0.5">{product.title}</p>
+                  <p className="font-mono text-xs font-bold text-on-surface mt-1">{inr(product.price_paise)}</p>
+                  <div className="mt-2.5 flex items-stretch gap-2">
+                    <button
+                      onClick={() => {
+                        onAddToCart(product);
+                        onRemoveWishlist(product.id);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-accent text-on-surface font-sans text-[11px] font-bold uppercase tracking-wider hover:bg-[#bbf055] transition-colors flex items-center gap-1.5 shadow-sm"
+                    >
+                      <span className="material-symbols-outlined text-[13px]">shopping_cart</span>
+                      <span>Move to Cart</span>
+                    </button>
+                    <button
+                      onClick={() => onRemoveWishlist(product.id)}
+                      className="aspect-square rounded-lg border border-border-subtle text-on-surface-muted hover:text-rose-600 hover:border-rose-200 transition-colors flex items-center justify-center shrink-0"
+                      title="Remove from wishlist"
+                    >
+                      <span className="material-symbols-outlined text-[15px] leading-none">delete</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </aside>
     </div>
@@ -412,7 +535,7 @@ function AdminPanel({ onBackToStore }) {
         <div className="bg-surface-card border border-border-subtle rounded-xl p-5 shadow-sm">
           <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-muted">Catalog Items</p>
           <p className="mt-1 text-3xl font-bold text-on-surface">{data.products.length}</p>
-          <p className="mt-1 text-[11px] text-on-surface-muted">Live SQLite WAL sync</p>
+          <p className="mt-1 text-[11px] text-on-surface-muted">Live PostgreSQL sync</p>
         </div>
         <div className="bg-surface-card border border-border-subtle rounded-xl p-5 shadow-sm">
           <p className="text-[11px] font-bold uppercase tracking-wider text-on-surface-muted">Low Stock Warnings</p>
@@ -601,7 +724,7 @@ function AdminPanel({ onBackToStore }) {
                       {PRODUCT_IMAGES[p.id] ? (
                         <img src={PRODUCT_IMAGES[p.id]} alt="" className="w-8 h-8 rounded-lg object-cover border border-border-subtle shrink-0" />
                       ) : (
-                        <span className="text-lg">{p.emoji}</span>
+                        <span className="material-symbols-outlined text-lg text-on-surface-muted">inventory_2</span>
                       )}
                       <span className="truncate">{p.title}</span>
                     </td>
@@ -647,10 +770,16 @@ export default function App() {
   const [cart, setCart] = useState({});
   const [cartOpen, setCartOpen] = useState(false);
   const [wishlist, setWishlist] = useState({});
+  const [wishlistOpen, setWishlistOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [categoriesDropdownOpen, setCategoriesDropdownOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
+
+  const showToast = useCallback((msg) => {
+    setToastMessage(msg);
+    setToastVisible(true);
+  }, []);
 
   // Keyword & AI Intent Search
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -659,13 +788,17 @@ export default function App() {
   const searchSuggestions = useMemo(() => {
     const q = catalogSearch.trim().toLowerCase();
     if (!q) return [];
+    const tokens = q.split(/\s+/).filter(Boolean);
     return allProducts
       .filter((p) => {
-        return (
-          p.title.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q) ||
-          (p.tags && p.tags.some((t) => t.toLowerCase().includes(q))) ||
-          p.description.toLowerCase().includes(q)
+        const title = (p.title || '').toLowerCase();
+        const category = (p.category || '').toLowerCase();
+        const tags = (p.tags || []).map((t) => t.toLowerCase());
+        return tokens.some(
+          (tok) =>
+            title.includes(tok) ||
+            category.includes(tok) ||
+            tags.some((t) => t.includes(tok))
         );
       })
       .slice(0, 5);
@@ -687,11 +820,6 @@ export default function App() {
   const intentInputRef = useRef(null);
   const catalogSearchRef = useRef(null);
 
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setToastVisible(true);
-  };
-
   // Notification Bell State (Top Navigation)
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifList, setNotifList] = useState([
@@ -711,26 +839,12 @@ export default function App() {
     },
     {
       id: 'notif_3',
-      title: 'Catalog Telemetry Synced',
-      message: 'Live warehouse inventory synchronized with AI discovery index.',
+      title: 'Catalog Inventory Updated',
+      message: 'Warehouse inventory synchronized with live catalog.',
       time: '2h ago',
       unread: false,
     },
   ]);
-
-  const [adminOverview, setAdminOverview] = useState(null);
-  const fetchAdminOverview = useCallback(async () => {
-    try {
-      const data = await api('/api/admin/overview');
-      setAdminOverview(data);
-    } catch {
-      // Graceful
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchAdminOverview();
-  }, [fetchAdminOverview]);
 
   const loadAllProducts = useCallback(async () => {
     try {
@@ -745,6 +859,21 @@ export default function App() {
   useEffect(() => {
     loadAllProducts();
   }, [loadAllProducts]);
+
+  const [adminOverview, setAdminOverview] = useState(null);
+  const fetchAdminOverview = useCallback(async () => {
+    try {
+      const data = await api('/api/admin/overview');
+      setAdminOverview(data);
+      await loadAllProducts();
+    } catch {
+      // Graceful
+    }
+  }, [loadAllProducts]);
+
+  useEffect(() => {
+    fetchAdminOverview();
+  }, [fetchAdminOverview]);
 
   // Keyboard shortcut: Cmd+K / Ctrl+K to focus catalog & AI search input
   useEffect(() => {
@@ -765,37 +894,57 @@ export default function App() {
 
   // Instant catalog filtering by category AND keyword search
   const filteredProducts = useMemo(() => {
-    let list = products;
-    if (selectedCategory !== 'All') {
+    let list = allProducts;
+    if (selectedCategory && selectedCategory.toLowerCase() !== 'all') {
       list = list.filter((p) => p.category.toLowerCase() === selectedCategory.toLowerCase());
     }
     if (catalogSearch.trim()) {
       const q = catalogSearch.toLowerCase().trim();
-      list = list.filter(
-        (p) =>
-          p.title.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q) ||
-          (p.tags && p.tags.some((t) => t.toLowerCase().includes(q)))
-      );
+      const tokens = q.split(/\s+/).filter(Boolean);
+      list = list.filter((p) => {
+        const title = (p.title || '').toLowerCase();
+        const category = (p.category || '').toLowerCase();
+        const tags = (p.tags || []).map((t) => t.toLowerCase());
+        return tokens.some(
+          (tok) =>
+            title.includes(tok) ||
+            category.includes(tok) ||
+            tags.some((t) => t.includes(tok))
+        );
+      });
     }
     return list;
-  }, [products, selectedCategory, catalogSearch]);
+  }, [allProducts, selectedCategory, catalogSearch]);
 
   const addToCart = (product) => {
+    if (!product || !product.id) return;
+    setAllProducts((prev) => {
+      if (prev.some((p) => p.id === product.id)) return prev;
+      return [...prev, product];
+    });
+    const maxStock = product.stock && product.stock > 0 ? product.stock : 10;
     setCart((c) => ({
       ...c,
-      [product.id]: Math.min((c[product.id] || 0) + 1, product.stock),
+      [product.id]: Math.min((c[product.id] || 0) + 1, maxStock),
     }));
     showToast(`Added ${product.title} to cart`);
     setCheckoutState({ loading: false, order: null, error: '' });
+    setCartOpen(true);
   };
 
-  const toggleWishlist = (productId) => {
+  const toggleWishlist = (productOrId) => {
+    const id = typeof productOrId === 'object' ? productOrId.id : productOrId;
+    if (!id) return;
+    if (typeof productOrId === 'object') {
+      setAllProducts((prev) => {
+        if (prev.some((p) => p.id === id)) return prev;
+        return [...prev, productOrId];
+      });
+    }
     setWishlist((w) => {
-      const next = !w[productId];
+      const next = !w[id];
       showToast(next ? 'Saved to Wishlist' : 'Removed from Wishlist');
-      return { ...w, [productId]: next };
+      return { ...w, [id]: next };
     });
   };
 
@@ -814,6 +963,7 @@ export default function App() {
     setIntentInput(text);
     setSearchLoading(true);
     setSearchResult(null);
+    setView('search');
 
     try {
       const res = await api('/api/ai/shop', {
@@ -821,6 +971,13 @@ export default function App() {
         body: JSON.stringify({ message: text }),
       });
       setSearchResult(res);
+      if (res.products && res.products.length > 0) {
+        setAllProducts((prev) => {
+          const map = new Map(prev.map((p) => [p.id, p]));
+          res.products.forEach((p) => map.set(p.id, p));
+          return Array.from(map.values());
+        });
+      }
       setView('search');
       if (!res.products || res.products.length === 0) {
         setDemandQuery(text);
@@ -837,6 +994,86 @@ export default function App() {
       setSearchLoading(false);
     }
   };
+
+  // Dual-Engine (Hybrid) Speech Recognition inside Header Search Bar
+  const [isVoiceListening, setIsVoiceListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const voiceSessionRef = useRef(null);
+  const voiceDebounceTimerRef = useRef(null);
+
+  const stopVoiceListening = useCallback(async () => {
+    if (voiceDebounceTimerRef.current) {
+      clearTimeout(voiceDebounceTimerRef.current);
+      voiceDebounceTimerRef.current = null;
+    }
+    if (voiceSessionRef.current) {
+      const session = voiceSessionRef.current;
+      voiceSessionRef.current = null;
+      setIsVoiceListening(false);
+      setIsSpeaking(false);
+      const text = await session.stop();
+      if (text && text.trim()) {
+        setCatalogSearch(text.trim());
+        setSearchFocused(true);
+        handleAiSearch(text.trim());
+      }
+    } else {
+      setIsVoiceListening(false);
+      setIsSpeaking(false);
+    }
+  }, [handleAiSearch]);
+
+  const toggleHeaderVoice = useCallback(async () => {
+    if (isVoiceListening) {
+      await stopVoiceListening();
+      return;
+    }
+
+    try {
+      setIsVoiceListening(true);
+      setIsSpeaking(false);
+      setSearchFocused(true);
+
+      const session = await startHybridVoiceSession({
+        language: 'en-IN',
+        onTranscript: (liveWords) => {
+          setCatalogSearch(liveWords);
+          setSearchFocused(true);
+          if (voiceDebounceTimerRef.current) clearTimeout(voiceDebounceTimerRef.current);
+          voiceDebounceTimerRef.current = setTimeout(() => {
+            stopVoiceListening();
+          }, 2000);
+        },
+        onSpeakingChange: (speaking) => {
+          setIsSpeaking(speaking);
+        },
+        onMicStatus: (status) => {
+          if (status === 'silent') {
+            showToast('Microphone sound is silent (0%). Check that your mic is unmuted in Windows Sound Settings.');
+          }
+        },
+      });
+
+      voiceSessionRef.current = session;
+    } catch (err) {
+      setIsVoiceListening(false);
+      setIsSpeaking(false);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        showToast('Microphone access blocked. Click the lock/settings icon in your browser URL bar to Allow.');
+      } else {
+        showToast('Could not access microphone: ' + (err.message || 'Check audio devices'));
+      }
+    }
+  }, [isVoiceListening, showToast, stopVoiceListening]);
+
+  useEffect(() => {
+    return () => {
+      if (voiceSessionRef.current) {
+        voiceSessionRef.current.abort();
+      }
+    };
+  }, []);
 
   const handleDemandSubmit = async (e) => {
     e.preventDefault();
@@ -889,28 +1126,13 @@ export default function App() {
     <div className="min-h-screen bg-surface text-on-surface antialiased flex flex-col font-body selection:bg-accent selection:text-black">
       <Toast message={toastMessage} visible={toastVisible} onHide={() => setToastVisible(false)} />
 
-      {/* TOP EDITORIAL TICKER */}
-      <aside className="w-full bg-[#171717] text-[#EAE7DF] border-b border-[#303030] py-2 px-6 overflow-hidden">
-        <div className="max-w-[1440px] mx-auto flex items-center justify-between text-[11px] font-sans tracking-widest uppercase">
-          <div className="flex items-center gap-3">
-            <span className="inline-block w-2 h-2 rounded-full bg-accent animate-ping"></span>
-            <span className="text-white font-medium">SHELF SENSE:</span>
-            <span className="text-[#A5A29B] hidden sm:inline">INTELLIGENT DEMAND-AWARE COMMERCE</span>
-          </div>
-          <div className="flex items-center gap-6">
-            <span className="text-[#A5A29B] hidden md:inline">FREE EXPRESS DELIVERY ON ORDERS OVER ₹999</span>
-            <span className="text-accent font-semibold">ALL PRICES IN INR (₹)</span>
-          </div>
-        </div>
-      </aside>
-
       {/* 1. FLOATING EDITORIAL NAVIGATION BAR */}
       <header className="sticky top-0 z-40 w-full bg-[#F5F3ED]/95 backdrop-blur-md border-b border-border-subtle">
         <div className="max-w-[1440px] mx-auto px-6 lg:px-12 h-20 flex items-center justify-between gap-6">
           {/* Brand & Logotype */}
           <div className="flex items-center gap-3.5 flex-shrink-0">
             <button
-              onClick={() => { setView('store'); setSearchResult(null); setCatalogSearch(''); }}
+              onClick={() => { setView('store'); setSearchResult(null); setCatalogSearch(''); setIntentInput(''); }}
               className="group flex items-center gap-2.5 text-left focus:outline-none"
             >
               <div className="w-8 h-8 flex items-center justify-center text-on-surface text-2xl font-bold group-hover:rotate-90 transition-transform duration-500 select-none">
@@ -930,12 +1152,11 @@ export default function App() {
           {/* Nav Links - Guaranteed Single Line with whitespace-nowrap */}
           <nav className="hidden lg:flex items-center gap-6 xl:gap-8 font-sans text-xs tracking-wider uppercase font-medium text-on-surface">
             <button
-              onClick={() => { setView('store'); setSearchResult(null); setCatalogSearch(''); }}
-              className={`whitespace-nowrap py-1 relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[2px] transition-all ${
-                view === 'store'
-                  ? 'text-on-surface font-bold after:bg-on-surface'
-                  : 'text-on-surface-muted hover:text-on-surface after:bg-transparent'
-              }`}
+              onClick={() => { setView('store'); setSearchResult(null); setCatalogSearch(''); setIntentInput(''); }}
+              className={`whitespace-nowrap py-1 relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[2px] transition-all ${view === 'store'
+                ? 'text-on-surface font-bold after:bg-on-surface'
+                : 'text-on-surface-muted hover:text-on-surface after:bg-transparent'
+                }`}
             >
               Home
             </button>
@@ -945,9 +1166,8 @@ export default function App() {
                 type="button"
                 onClick={() => setCategoriesDropdownOpen((prev) => !prev)}
                 onMouseEnter={() => setCategoriesDropdownOpen(true)}
-                className={`whitespace-nowrap flex items-center gap-1 py-1 transition-colors ${
-                  categoriesDropdownOpen ? 'text-on-surface font-bold' : 'text-on-surface-muted hover:text-on-surface'
-                }`}
+                className={`whitespace-nowrap flex items-center gap-1 py-1 transition-colors ${categoriesDropdownOpen ? 'text-on-surface font-bold' : 'text-on-surface-muted hover:text-on-surface'
+                  }`}
               >
                 <span>Categories</span>
                 <span className={`material-symbols-outlined text-[16px] transition-transform duration-200 ${categoriesDropdownOpen ? 'rotate-180' : ''}`}>
@@ -974,35 +1194,52 @@ export default function App() {
                     </a>
                   </div>
 
-                  {CATEGORY_ITEMS.map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => {
-                        setView('store');
-                        setSelectedCategory(cat.id);
-                        setCategoriesDropdownOpen(false);
-                        setTimeout(() => {
-                          document.getElementById('curation')?.scrollIntoView({ behavior: 'smooth' });
-                        }, 50);
-                      }}
-                      className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-surface-subtle transition-colors text-left group"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-lg">{cat.emoji}</span>
-                        <div>
-                          <span className="font-sans text-xs font-bold text-on-surface block group-hover:text-black">
-                            {cat.title}
+                  {CATEGORY_ITEMS.map((cat) => {
+                    const count = cat.id === 'all'
+                      ? allProducts.length
+                      : allProducts.filter((p) => p.category.toLowerCase() === cat.id.toLowerCase()).length;
+                    const isSelected = (cat.id === 'all' && selectedCategory.toLowerCase() === 'all') ||
+                      selectedCategory.toLowerCase() === cat.id.toLowerCase();
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => {
+                          setView('store');
+                          setSearchResult(null);
+                          setCatalogSearch('');
+                          setSelectedCategory(cat.id === 'all' ? 'All' : cat.id);
+                          setCategoriesDropdownOpen(false);
+                          setTimeout(() => {
+                            document.getElementById('curation')?.scrollIntoView({ behavior: 'smooth' });
+                          }, 50);
+                        }}
+                        className={`w-full flex items-center justify-between p-2 rounded-xl hover:bg-surface-subtle transition-colors text-left group ${isSelected ? 'bg-surface-subtle' : ''
+                          }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="material-symbols-outlined text-[20px] text-on-surface-muted group-hover:text-black flex-shrink-0">
+                            {cat.icon}
                           </span>
-                          <span className="font-body text-[10px] text-on-surface-muted block leading-tight">
-                            {cat.desc}
-                          </span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={`font-sans text-xs font-bold truncate ${isSelected ? 'text-black font-extrabold' : 'text-on-surface group-hover:text-black'}`}>
+                                {cat.title}
+                              </span>
+                              <span className="px-1.5 py-0.2 rounded-full bg-surface border border-border-subtle font-mono text-[9px] font-bold text-on-surface-muted flex-shrink-0">
+                                {count}
+                              </span>
+                            </div>
+                            <span className="font-body text-[10px] text-on-surface-muted block leading-tight truncate">
+                              {cat.desc}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      <span className="material-symbols-outlined text-[14px] text-on-surface-muted opacity-0 group-hover:opacity-100 transition-opacity">
-                        chevron_right
-                      </span>
-                    </button>
-                  ))}
+                        <span className="material-symbols-outlined text-[14px] text-on-surface-muted opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                          chevron_right
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1021,7 +1258,11 @@ export default function App() {
                     handleAiSearch(catalogSearch);
                   }
                 }}
-                className="flex items-center bg-white border border-border-subtle hover:border-on-surface focus-within:border-on-surface focus-within:ring-2 focus-within:ring-on-surface/10 rounded-full h-9 pl-3 pr-1 gap-1.5 transition-all w-44 sm:w-60 md:w-68 lg:w-72 xl:w-80 shadow-sm"
+                className={`relative flex items-center ${
+                  isVoiceListening
+                    ? 'bg-rose-50/90 border-rose-300 ring-2 ring-rose-400/40 shadow-[0_0_12px_rgba(244,63,94,0.15)]'
+                    : 'bg-white border-border-subtle hover:border-on-surface focus-within:border-on-surface focus-within:ring-2 focus-within:ring-on-surface/10'
+                } rounded-full h-9 pl-3 pr-1 gap-1.5 transition-all w-44 sm:w-60 md:w-68 lg:w-72 xl:w-80 shadow-sm overflow-visible`}
               >
                 <span className="material-symbols-outlined text-[16px] text-on-surface-muted flex-shrink-0 select-none">
                   search
@@ -1036,7 +1277,7 @@ export default function App() {
                     setCatalogSearch(e.target.value);
                     setSearchFocused(true);
                   }}
-                  placeholder="Search catalog or ask AI..."
+                  placeholder={isVoiceListening ? "Listening... speak now" : "Search catalog or ask AI..."}
                   className="bg-transparent text-xs font-sans text-on-surface placeholder:text-on-surface-muted/60 outline-none w-full min-w-0"
                 />
                 {catalogSearch && (
@@ -1052,6 +1293,23 @@ export default function App() {
                     <span className="material-symbols-outlined text-[14px]">close</span>
                   </button>
                 )}
+
+                {/* Streaming Mic Button inside Search Bar (Whisper graphic_eq icon moves when speaking) */}
+                <button
+                  type="button"
+                  onClick={toggleHeaderVoice}
+                  title={isVoiceListening ? "Listening... click to search" : "Speak to search"}
+                  className={`p-1.5 rounded-full flex items-center justify-center transition-all flex-shrink-0 cursor-pointer ${
+                    isVoiceListening
+                      ? `bg-gradient-to-tr from-rose-600 to-pink-500 text-white shadow-sm ring-2 ring-rose-300/80 ${isSpeaking ? 'animate-pulse scale-105' : ''}`
+                      : 'text-on-surface-muted hover:text-rose-600 hover:bg-rose-50'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[17px]">
+                    {isVoiceListening ? 'graphic_eq' : 'mic'}
+                  </span>
+                </button>
+
                 {/* Integrated AI Engine Action Button */}
                 <button
                   type="button"
@@ -1060,21 +1318,23 @@ export default function App() {
                     if (catalogSearch.trim()) {
                       handleAiSearch(catalogSearch);
                     } else {
+                      if (view !== 'search') {
+                        setIntentInput('');
+                        setSearchResult(null);
+                      }
                       setView(view === 'search' ? 'store' : 'search');
                     }
                   }}
                   title={catalogSearch.trim() ? "Search with AI Intent" : "Toggle AI Engine"}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-sans text-[10px] uppercase font-bold tracking-wider transition-all flex-shrink-0 shadow-sm active:scale-95 group ${
-                    view === 'search'
-                      ? 'bg-accent text-on-surface hover:bg-[#bbf055]'
-                      : 'bg-[#171717] hover:bg-black text-[#C7F36B]'
-                  }`}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-sans text-[10px] uppercase font-bold tracking-wider transition-all flex-shrink-0 shadow-sm active:scale-95 group ${view === 'search'
+                    ? 'bg-accent text-on-surface hover:bg-[#bbf055]'
+                    : 'bg-[#171717] hover:bg-black text-[#C7F36B]'
+                    }`}
                 >
                   <span className="material-symbols-outlined text-[13px] group-hover:rotate-12 transition-transform">
                     auto_awesome
                   </span>
                   <span>AI</span>
-                  <kbd className="hidden sm:inline font-mono text-[9px] opacity-70 ml-0.5">↵</kbd>
                 </button>
               </form>
 
@@ -1096,7 +1356,7 @@ export default function App() {
                   {searchSuggestions.length > 0 ? (
                     <div className="max-h-72 overflow-y-auto divide-y divide-border-subtle/60">
                       {searchSuggestions.map((prod) => {
-                        const img = PRODUCT_IMAGES[prod.id];
+                        const img = getProductImage(prod);
                         return (
                           <div
                             key={prod.id}
@@ -1121,7 +1381,9 @@ export default function App() {
                               {img ? (
                                 <img src={img} alt={prod.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                               ) : (
-                                <span className="flex w-full h-full items-center justify-center text-lg">{prod.emoji || '📦'}</span>
+                                <span className="flex w-full h-full items-center justify-center">
+                                  <span className="material-symbols-outlined text-lg text-on-surface-muted">inventory_2</span>
+                                </span>
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
@@ -1175,7 +1437,7 @@ export default function App() {
                       </span>
                     </div>
                     <span className="px-2 py-0.5 rounded bg-[#C7F36B] text-black font-mono text-[9px] font-bold tracking-wider uppercase shrink-0">
-                      AI ↵
+                      AI
                     </span>
                   </div>
                 </div>
@@ -1186,17 +1448,20 @@ export default function App() {
             <button
               aria-label="Wishlist"
               title="Wishlist"
-              onClick={() => {
-                showToast(wishCount > 0 ? `${wishCount} item(s) in Wishlist` : 'Wishlist is empty. Tap ♡ on any product.');
-              }}
-              className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors border ${wishCount > 0
+              onClick={() => setWishlistOpen(true)}
+              className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors border relative ${wishCount > 0
                 ? 'border-border-subtle bg-surface-card text-rose-600'
                 : 'border-border-subtle bg-surface-card hover:bg-surface-subtle text-on-surface'
                 }`}
             >
               <span className="material-symbols-outlined text-[18px]">
-                {wishCount > 0 ? 'favorite' : 'favorite_border'}
+                favorite_border
               </span>
+              {wishCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-600 text-white font-mono text-[9px] font-bold flex items-center justify-center rounded-full shadow-sm">
+                  {wishCount}
+                </span>
+              )}
             </button>
 
             {/* Notification Bell Icon Button (Added as requested) */}
@@ -1238,9 +1503,8 @@ export default function App() {
                     {notifList.map((item) => (
                       <div
                         key={item.id}
-                        className={`py-3 px-2 rounded-lg transition-colors ${
-                          item.unread ? 'bg-surface-subtle/50' : 'hover:bg-surface-subtle/30'
-                        }`}
+                        className={`py-3 px-2 rounded-lg transition-colors ${item.unread ? 'bg-surface-subtle/50' : 'hover:bg-surface-subtle/30'
+                          }`}
                       >
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-bold text-on-surface flex items-center gap-1.5">
@@ -1259,18 +1523,19 @@ export default function App() {
               )}
             </div>
 
-            {/* Ops Console Switcher Pill */}
+            {/* Merchant Radar Switcher Pill */}
             <button
-              onClick={() => setView(view === 'store' ? 'admin' : 'store')}
+              onClick={() => setView(view === 'admin' ? 'store' : 'admin')}
+              title={view === 'admin' ? "Return to Storefront" : "Open Merchant Demand Radar"}
               className={`h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border border-border-subtle font-sans text-xs uppercase tracking-wider font-semibold whitespace-nowrap transition-colors ${view === 'admin'
                 ? 'bg-on-surface text-accent border-on-surface'
                 : 'bg-surface-card text-on-surface hover:bg-surface-subtle'
                 }`}
             >
               <span className="material-symbols-outlined text-[16px]">
-                {view === 'admin' ? 'storefront' : 'tune'}
+                {view === 'admin' ? 'storefront' : 'radar'}
               </span>
-              <span>{view === 'admin' ? 'Store' : 'Ops'}</span>
+              <span>{view === 'admin' ? 'Storefront' : 'Merchant Radar'}</span>
             </button>
 
             {/* Cart Trigger */}
@@ -1291,7 +1556,10 @@ export default function App() {
       {/* Main View Area */}
       {view === 'search' ? (
         <SearchResultsView
-          initialQuery={intentInput || "I need a lightweight laptop bag for college, waterproof, under ₹2,500..."}
+          initialQuery={intentInput}
+          searchResult={searchResult}
+          allProducts={allProducts}
+          productImages={PRODUCT_IMAGES}
           onSearch={(q) => handleAiSearch(q)}
           isLoading={searchLoading}
           addToCart={addToCart}
@@ -1355,11 +1623,11 @@ export default function App() {
                   <div className="flex items-center justify-between pb-4 mb-4 border-b border-border-subtle text-xs font-sans">
                     <div className="flex items-center gap-2.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-accent"></span>
-                      <span className="font-bold tracking-wider uppercase text-on-surface">AI INTENT ENGINE / V2.4</span>
+                      <span className="font-bold tracking-wider uppercase text-on-surface">SMART INTENT SEARCH</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="inline-block px-2 py-0.5 rounded bg-surface-subtle text-[10px] font-mono text-on-surface-muted uppercase">
-                        SYNTACTIC PARSER LIVE
+                        AI POWERED
                       </span>
                     </div>
                   </div>
@@ -1382,7 +1650,7 @@ export default function App() {
                   <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-2 text-xs font-sans text-on-surface-muted">
                       <span className="material-symbols-outlined text-[16px] text-on-surface">psychology</span>
-                      <span>Contextual parsing: materials, ergonomics, price thresholds.</span>
+                      <span>Smart matching: materials, use cases, and budget limits.</span>
                     </div>
                     <button
                       className="px-6 py-3 rounded-lg bg-accent text-on-surface font-sans text-xs tracking-wider uppercase font-bold hover:bg-[#bbf055] active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-sm whitespace-nowrap"
@@ -1471,6 +1739,10 @@ export default function App() {
                         alt="AeroShield Waterproof 24L Commuter Bag"
                         className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out"
                         src={PRODUCT_IMAGES.prod_001}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=1200&q=80';
+                        }}
                       />
                       {/* Overlay Vignette Gradient */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10 pointer-events-none"></div>
@@ -1497,10 +1769,26 @@ export default function App() {
                             </h4>
                           </div>
                           <button
-                            className="w-9 h-9 rounded-full bg-accent text-on-surface flex items-center justify-center font-bold hover:scale-105 transition-transform shadow-sm"
-                            onClick={() => {
-                              const prod = allProducts.find((p) => p.id === 'prod_001');
-                              if (prod) addToCart(prod);
+                            type="button"
+                            className="w-9 h-9 rounded-full bg-accent text-on-surface flex items-center justify-center font-bold hover:scale-105 transition-transform shadow-sm cursor-pointer"
+                            aria-label="Add AeroShield to Cart"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              let prod = allProducts.find((p) => p.id === 'prod_001');
+                              if (!prod) {
+                                prod = {
+                                  id: 'prod_001',
+                                  sku: 'BAG-001',
+                                  title: 'AeroShield Waterproof 24L',
+                                  price_paise: 249900,
+                                  stock: 12,
+                                  category: 'bags',
+                                  tags: ['waterproof', 'laptop', 'backpack'],
+                                  description: 'Water-resistant 14-inch laptop backpack with roll-top closure.',
+                                };
+                              }
+                              addToCart(prod);
                             }}
                           >
                             <span className="material-symbols-outlined text-[18px]">add</span>
@@ -1530,9 +1818,6 @@ export default function App() {
                   Explore by <span className="serif-italic font-normal lowercase tracking-normal">what you need.</span>
                 </h2>
               </div>
-              <p className="font-body text-sm text-on-surface-muted max-w-md">
-                Structured around contextual activities, micro-environments, and daily behavioral workflows instead of static retailer categories.
-              </p>
             </div>
 
             {/* Asymmetric Modular Grid */}
@@ -1672,54 +1957,40 @@ export default function App() {
                 </h2>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {categories.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setSelectedCategory(c)}
-                    className={`px-3 py-1 rounded-full text-xs font-sans uppercase font-bold tracking-wider transition ${selectedCategory.toLowerCase() === c.toLowerCase()
-                      ? 'bg-on-surface text-white'
-                      : 'border border-border-subtle bg-surface-card text-on-surface-muted hover:text-on-surface'
-                      }`}
-                  >
-                    {c === 'All' ? 'All Products' : c}
-                  </button>
-                ))}
+                {categories.map((c) => {
+                  const count = c === 'All'
+                    ? allProducts.length
+                    : allProducts.filter((p) => p.category.toLowerCase() === c.toLowerCase()).length;
+                  const isSelected = selectedCategory.toLowerCase() === c.toLowerCase();
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => {
+                        setSearchResult(null);
+                        setCatalogSearch('');
+                        setSelectedCategory(c);
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-xs font-sans uppercase font-bold tracking-wider transition flex items-center gap-1.5 ${isSelected
+                        ? 'bg-on-surface text-white shadow-sm'
+                        : 'border border-border-subtle bg-surface-card text-on-surface-muted hover:text-on-surface'
+                        }`}
+                    >
+                      <span>{c === 'All' ? 'All Products' : c}</span>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${isSelected
+                        ? 'bg-white/20 text-white'
+                        : 'bg-surface-subtle text-on-surface-muted'
+                        }`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* If search result has no matches, show the Demand Radar Alert */}
-            {searchResult && searchResult.products?.length === 0 && (
-              <div className="mb-12 rounded-2xl border border-border-subtle bg-surface-card p-8 shadow-editorial">
-                <div className="flex flex-col md:flex-row items-center gap-6">
-                  <div className="w-16 h-16 rounded-2xl bg-accent text-on-surface flex items-center justify-center flex-shrink-0 font-bold text-2xl">
-                    ❋
-                  </div>
-                  <div className="flex-1 text-center md:text-left">
-                    <span className="inline-block px-3 py-0.5 rounded-full bg-accent text-on-surface font-sans text-[10px] font-bold tracking-wider uppercase mb-2">
-                      CATALOG GAP LOGGED
-                    </span>
-                    <h3 className="font-sans text-xl font-bold uppercase text-on-surface">
-                      No exact catalog product matched your query: “{intentInput}”
-                    </h3>
-                    <p className="mt-1 font-body text-xs text-on-surface-muted leading-relaxed">
-                      We have captured this specification in the <strong>Merchant Demand Radar</strong>. Our merchant network can source and stock this requested product.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      demandSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                    className="px-6 py-3 rounded-lg bg-on-surface text-white hover:bg-black font-sans text-xs tracking-wider uppercase font-bold whitespace-nowrap"
-                  >
-                    Request This Product →
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Variable Sized Editorial Product Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 items-stretch">
-              {(searchResult?.products?.length ? searchResult.products : filteredProducts).map((product) => (
+              {filteredProducts.map((product) => (
                 <ProductCard
                   key={product.id}
                   product={product}
@@ -1729,6 +2000,25 @@ export default function App() {
                 />
               ))}
             </div>
+
+            {filteredProducts.length === 0 && (
+              <div className="py-20 text-center rounded-2xl border border-dashed border-border-subtle p-8 bg-surface-card">
+                <span className="material-symbols-outlined text-4xl text-on-surface-muted mb-3">inventory_2</span>
+                <p className="font-sans text-base font-bold uppercase text-on-surface">No products found</p>
+                <p className="font-body text-xs text-on-surface-muted mt-1 max-w-sm mx-auto">
+                  No items matched your current filter criteria in this category.
+                </p>
+                <button
+                  onClick={() => {
+                    setSelectedCategory('All');
+                    setCatalogSearch('');
+                  }}
+                  className="mt-4 px-4 py-2 rounded-lg bg-on-surface text-white text-xs font-sans font-bold uppercase tracking-wider hover:bg-black transition-colors"
+                >
+                  View All Products ({allProducts.length})
+                </button>
+              </div>
+            )}
           </section>
 
           {/* 5. BRAND STORYTELLING & MANIFESTO */}
@@ -1739,7 +2029,7 @@ export default function App() {
                   OUR MANIFESTO / ESSAY 01
                 </span>
                 <blockquote className="font-sans text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-on-surface leading-[1.05] uppercase">
-                  "Commerce built on <span className="serif-italic font-normal lowercase tracking-normal">human intent,</span> not keyword manipulation."
+                  "Direct commerce driven by <span className="serif-italic font-normal lowercase tracking-normal">verified quality,</span> not sponsored placement spam."
                 </blockquote>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mt-16 pt-12 border-t border-border-subtle">
@@ -1770,93 +2060,146 @@ export default function App() {
 
           {/* 6. DEMAND-GAP DISCOVERY PANEL (UNMET DEMAND ENGINE) */}
           <section ref={demandSectionRef} className="max-w-[1440px] mx-auto px-6 lg:px-12 py-20 lg:py-28 border-b border-border-subtle" id="demand-gap">
-            <div className="w-full bg-surface-card border border-border-subtle rounded-3xl p-8 sm:p-12 lg:p-16 relative overflow-hidden shadow-sm">
-              <div className="absolute right-0 top-0 w-1/3 h-full border-l border-border-subtle hidden lg:block pointer-events-none opacity-40">
-                <div className="h-1/2 border-b border-border-subtle"></div>
-              </div>
-              <div className="max-w-2xl relative z-10">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent text-on-surface font-sans text-xs font-bold tracking-wider uppercase mb-6">
-                  <span className="w-1.5 h-1.5 rounded-full bg-black"></span>
-                  CUSTOM SOURCING REQUEST
-                </div>
-                <h2 className="font-sans text-3xl sm:text-5xl font-bold uppercase tracking-tight text-on-surface leading-tight">
-                  Can’t find what <br />
-                  you’re <span className="serif-italic font-normal lowercase tracking-normal">looking for?</span>
-                </h2>
-                <p className="font-body text-base text-on-surface-muted mt-6 mb-8 leading-relaxed">
-                  Submit your specific requirements and budget constraints. Your request is logged into our Merchant Demand Radar so our partner network can source and stock the exact product you need.
-                </p>
-
-                <form onSubmit={handleDemandSubmit} className="space-y-4">
-                  <div>
-                    <label className="block font-sans text-xs uppercase tracking-wider font-bold text-on-surface mb-2">
-                      PRODUCT DESCRIPTION &amp; REQUIREMENTS
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      className="input"
-                      placeholder="e.g. 15.6-inch waterproof commuter rolltop under ₹2,000"
-                      value={demandQuery}
-                      onChange={(e) => setDemandQuery(e.target.value)}
-                    />
+            <div className="w-full bg-surface-card border border-border-subtle rounded-3xl p-8 sm:p-12 lg:p-14 relative overflow-hidden shadow-sm">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+                {/* Left Column: Form */}
+                <div className="lg:col-span-7 relative z-10">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent text-on-surface font-sans text-xs font-bold tracking-wider uppercase mb-6">
+                    <span className="w-1.5 h-1.5 rounded-full bg-black"></span>
+                    CUSTOM SOURCING REQUEST
                   </div>
+                  <h2 className="font-sans text-3xl sm:text-5xl font-bold uppercase tracking-tight text-on-surface leading-tight">
+                    Can’t find what <br />
+                    you’re <span className="serif-italic font-normal lowercase tracking-normal">looking for?</span>
+                  </h2>
+                  <p className="font-body text-base text-on-surface-muted mt-5 mb-8 leading-relaxed max-w-xl">
+                    Submit your specific requirements and budget constraints. Your request is logged into our Merchant Demand Radar so our partner network can source and stock the exact product you need.
+                  </p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <form onSubmit={handleDemandSubmit} className="space-y-4">
                     <div>
                       <label className="block font-sans text-xs uppercase tracking-wider font-bold text-on-surface mb-2">
-                        CATEGORY
-                      </label>
-                      <select
-                        className="input capitalize"
-                        value={demandCategory}
-                        onChange={(e) => setDemandCategory(e.target.value)}
-                      >
-                        <option value="bags">Travel &amp; Carry</option>
-                        <option value="shoes">Footwear &amp; Trail</option>
-                        <option value="electronics">Focus Electronics</option>
-                        <option value="apparel">Technical Apparel</option>
-                        <option value="accessories">Modular Everyday</option>
-                        <option value="stationery">Stationery &amp; Desk</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block font-sans text-xs uppercase tracking-wider font-bold text-on-surface mb-2">
-                        MAX BUDGET CEILING (₹)
+                        PRODUCT DESCRIPTION &amp; REQUIREMENTS
                       </label>
                       <input
-                        type="number"
-                        min="100"
+                        type="text"
+                        required
                         className="input"
-                        placeholder="2500"
-                        value={demandBudget}
-                        onChange={(e) => setDemandBudget(e.target.value)}
+                        placeholder="e.g. 15.6-inch waterproof commuter rolltop under ₹2,000"
+                        value={demandQuery}
+                        onChange={(e) => setDemandQuery(e.target.value)}
                       />
                     </div>
-                  </div>
 
-                  <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
-                    <button
-                      type="submit"
-                      disabled={demandSubmitting || !demandQuery.trim()}
-                      className="px-8 py-4 rounded-xl bg-accent text-on-surface font-sans text-xs tracking-wider uppercase font-bold hover:bg-[#bbf055] transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-40"
-                    >
-                      <span>{demandSubmitting ? 'Submitting to Radar…' : 'Submit Unmet Request'}</span>
-                      <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-                    </button>
-                    <a
-                      className="px-6 py-4 rounded-xl border border-border-subtle bg-surface-subtle hover:bg-white text-on-surface font-sans text-xs tracking-wider uppercase font-semibold text-center transition-colors"
-                      href="#manifesto"
-                    >
-                      Maker Standards Charter
-                    </a>
-                  </div>
-                </form>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block font-sans text-xs uppercase tracking-wider font-bold text-on-surface mb-2">
+                          CATEGORY
+                        </label>
+                        <select
+                          className="input capitalize"
+                          value={demandCategory}
+                          onChange={(e) => setDemandCategory(e.target.value)}
+                        >
+                          <option value="bags">Travel &amp; Carry</option>
+                          <option value="shoes">Footwear &amp; Trail</option>
+                          <option value="electronics">Focus Electronics</option>
+                          <option value="apparel">Technical Apparel</option>
+                          <option value="accessories">Modular Everyday</option>
+                          <option value="stationery">Stationery &amp; Desk</option>
+                        </select>
+                      </div>
 
-                <div className="mt-8 pt-6 border-t border-border-subtle flex items-center gap-3 text-xs font-sans text-on-surface-muted">
-                  <span className="material-symbols-outlined text-[18px] text-on-surface">verified_user</span>
-                  <span>Over 1,240 custom requests successfully manufactured and delivered across India this season.</span>
+                      <div>
+                        <label className="block font-sans text-xs uppercase tracking-wider font-bold text-on-surface mb-2">
+                          MAX BUDGET CEILING (₹)
+                        </label>
+                        <input
+                          type="number"
+                          min="100"
+                          className="input"
+                          placeholder="2500"
+                          value={demandBudget}
+                          onChange={(e) => setDemandBudget(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+                      <button
+                        type="submit"
+                        disabled={demandSubmitting || !demandQuery.trim()}
+                        className="px-8 py-4 rounded-xl bg-accent text-on-surface font-sans text-xs tracking-wider uppercase font-bold hover:bg-[#bbf055] transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-40"
+                      >
+                        <span>{demandSubmitting ? 'Submitting to Radar…' : 'Submit Unmet Request'}</span>
+                        <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                      </button>
+                      <a
+                        className="px-6 py-4 rounded-xl border border-border-subtle bg-surface-subtle hover:bg-white text-on-surface font-sans text-xs tracking-wider uppercase font-semibold text-center transition-colors"
+                        href="#manifesto"
+                      >
+                        Merchant Sourcing Charter
+                      </a>
+                    </div>
+                  </form>
+
+                  <div className="mt-8 pt-6 border-t border-border-subtle flex items-center gap-3 text-xs font-sans text-on-surface-muted">
+                    <span className="material-symbols-outlined text-[18px] text-on-surface">verified_user</span>
+                    <span>Over 1,240 custom customer orders successfully matched and fulfilled across India this season.</span>
+                  </div>
+                </div>
+
+                {/* Right Column: Architectural Blueprint (Direct E-Commerce Fulfillment) */}
+                <div className="lg:col-span-5 relative">
+                  <div className="bg-[#F5F2EA] border border-[#DDD5C5] rounded-2xl p-5 sm:p-6 shadow-sm relative overflow-hidden">
+                    {/* Commerce Header */}
+                    <div className="flex items-center justify-between border-b border-[#D8CEB9] pb-3 mb-3">
+                      <div>
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-[#7C7462] block font-bold">
+                          DEMAND-DRIVEN SOURCING PROTOCOL
+                        </span>
+                        <span className="font-sans text-xs font-bold text-[#2B271F] uppercase tracking-wider">
+                          DIRECT COMMERCE ARCHITECTURE · LIVE FULFILLMENT
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* E-Commerce Guarantee Circular Seal Stamp */}
+                    <div className="absolute top-12 right-6 z-20 rotate-[-6deg] border-2 border-dashed border-[#8B3A2B]/75 rounded-full w-20 h-20 p-1 flex flex-col items-center justify-center text-center bg-[#F5F2EA]/95 backdrop-blur-xs select-none shadow-xs pointer-events-none">
+                      <span className="font-mono text-[6.5px] font-bold text-[#8B3A2B] uppercase tracking-widest leading-none">
+                        SHELFSENSE
+                      </span>
+                      <span className="font-serif italic text-[10px] font-bold text-[#8B3A2B] leading-none my-0.5">
+                        Direct Retail
+                      </span>
+                      <span className="font-mono text-[6px] uppercase tracking-wider text-[#8B3A2B]/80 font-bold">
+                        FAST DISPATCH
+                      </span>
+                    </div>
+
+                    {/* Hand-Drawn Vintage Architectural Pencil Art: Direct E-Commerce Merchant Coupling */}
+                    <div className="w-full bg-[#FAF7F2] rounded-xl overflow-hidden border border-[#D9D0BD] shadow-xs relative group">
+                      <img
+                        src="/human-ecommerce-blueprint.jpg"
+                        alt="Direct E-Commerce: Shopper to Boutique Merchant"
+                        className="w-full h-auto object-cover group-hover:scale-[1.01] transition-transform duration-500"
+                      />
+                    </div>
+
+                    {/* Bottom Commerce Caption & Inspiring Retail Quote */}
+                    <div className="mt-3.5 pt-3 border-t border-[#D8CEB9] flex flex-col gap-2 text-[11px] font-sans text-[#6B6350]">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-[15px] text-[#2B271F]">local_shipping</span>
+                          <span className="font-medium text-[#2B271F]">Direct Shopper-to-Merchant Fulfillment</span>
+                        </div>
+                        <span className="font-mono text-[10px] text-[#8B3A2B] font-bold">ZERO OVERSTOCK · 100% INTENT</span>
+                      </div>
+                      <p className="font-serif italic text-[11.5px] text-[#6E6654] leading-snug">
+                        "Connecting real customer demand directly with merchant shelves — eliminating retail waste, maximizing speed."
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1880,6 +2223,16 @@ export default function App() {
         onQty={setQty}
         onCheckout={checkout}
         checkoutState={checkoutState}
+      />
+
+      {/* Wishlist Drawer (Flipkart style luxury panel) */}
+      <WishlistDrawer
+        open={wishlistOpen}
+        onClose={() => setWishlistOpen(false)}
+        wishlist={wishlist}
+        products={allProducts}
+        onAddToCart={addToCart}
+        onRemoveWishlist={toggleWishlist}
       />
 
       {/* 7. LUXURY EDITORIAL FOOTER */}
