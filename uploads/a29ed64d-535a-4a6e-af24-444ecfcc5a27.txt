@@ -1,3 +1,0 @@
-# Apache Kafka® for Free
-
-Aiven is the Apache Kafka® development platform. Start your free cloud Apache Kafka cluster with fully managed Schema registry and REST proxy.
