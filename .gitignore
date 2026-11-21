@@ -42,3 +42,8 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+# Architecture Blueprints & Planning Notes
+blueprint*.md
+*blueprint*.md
+synqora-*.md
