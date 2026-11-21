@@ -1,7 +1,6 @@
 # ShelfSense
 
-> **AI-Powered Intent Commerce Platform & Autonomous Merchant Demand Radar**  
-> *Built for the Build Bengaluru 2.0 Hackathon*
+> **AI-Powered Intent Commerce Platform & Autonomous Merchant Demand Radar**
 
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI_0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/Frontend-React_18_+_Vite_5-61DAFB.svg?logo=react&logoColor=black)](https://reactjs.org)
