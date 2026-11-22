@@ -211,43 +211,6 @@ npm run dev
 
 ---
 
-## Render Cloud Deployment
-
-ShelfSense includes a production-ready **Render Blueprint** ([`render.yaml`](file:///C:/Users/Ravichandran/OneDrive/Desktop/ShelfSense/ShelfSense-store/render.yaml)) configured for zero-downtime deployment.
-
-### Option A: One-Click Blueprint Deployment (Recommended)
-1. Push your repository to GitHub.
-2. In the [Render Dashboard](https://dashboard.render.com), click **New +** → **Blueprint**.
-3. Select your repository. Render will automatically parse `render.yaml` and provision:
-   - **`shelfsense-backend`** (Python Web Service with health check `/api/health`)
-   - **`shelfsense-storefront`** (Static Site with SPA rewrite rules)
-   - **`shelfsense-db`** (Managed PostgreSQL database)
-4. Set your **`GOOGLE_API_KEY`** in the prompt and click **Apply**.
-
-### Option B: Manual UI Deployment
-
-#### 1. Backend Web Service
-- **Type:** Web Service
-- **Root Directory:** `ShelfSense-store/backend`
-- **Runtime:** Python 3
-- **Build Command:** `pip install -r requirements.txt`
-- **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
-- **Health Check Path:** `/api/health`
-- **Environment Variables:**
-  - `GOOGLE_API_KEY`: *(Your Gemini API key)*
-  - `DATABASE_URL`: *(Render PostgreSQL connection string)*
-
-#### 2. Frontend Static Site
-- **Type:** Static Site
-- **Root Directory:** `ShelfSense-store/frontend`
-- **Build Command:** `npm install && npm run build`
-- **Publish Directory:** `dist`
-- **Rewrite Rule:** `/*` → `/index.html`
-- **Environment Variables:**
-  - `VITE_API_URL`: `https://<your-backend-service>.onrender.com`
-
----
-
 ## API Reference
 
 ### Storefront & Catalog
