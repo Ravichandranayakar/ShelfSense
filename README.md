@@ -8,6 +8,7 @@
 [![Gemini](https://img.shields.io/badge/AI_Engine-Google_Gemini_Flash--Lite-4285F4.svg?logo=google&logoColor=white)](https://ai.google.dev)
 [![Gnani.ai](https://img.shields.io/badge/Voice_AI-Gnani_Prisma_v3.0_+_Timbre_v3.0-FF6F00.svg)](https://gnani.ai)
 [![Render](https://img.shields.io/badge/Deployment-Render_Blueprint_Ready-46E3B7.svg?logo=render&logoColor=white)](https://render.com)
+[![Live Storefront](https://img.shields.io/badge/Live_Storefront-shelfsense--storefront.onrender.com-success?style=flat&logo=render)](https://shelfsense-storefront.onrender.com/)
 
 Live :- https://shelfsense-storefront.onrender.com/
 
@@ -65,11 +66,112 @@ Traditional e-commerce search relies on rigid keyword tokenization and static ca
         │  • outbox            (event_type, payload, processed_at)    │
         │  • alerts            (type, evidence_json, draft_text)      │
         │  • demand_signals    (query, category, budget, source)      │
+        │  • fulfilled_demands (query, title, stock_added, product_id)│
         └─────────────────────────────────────────────────────────────┘
                                          │
                                          ▼
                            [ MERCHANT DEMAND RADAR ]
         Aggregated Market Clusters ──> Sourcing RFQ Drafts ──> Live Catalog Fulfillment
+```
+
+---
+
+## End-to-End Platform Workflows
+
+### Workflow 1: Shopper Intent-to-Delivery Lifecycle
+```
+[ Shopper Enters Storefront ]
+             │
+             ▼
+[ Conversational Intent Input ] ──(Voice or Text)──> [ Gemini Flash-Lite / Regex Engine ]
+             │                                                       │
+             ├───────────────────────────────────────────────────────┤
+             ▼                                                       ▼
+    [ Catalog Matches Found ]                              [ Zero Catalog Matches ]
+             │                                                       │
+             ▼                                                       ▼
+[ Interactive Constraint Chips ]                           [ Demand Signal Auto-Logged ]
+             │                                                       │
+             ▼                                                       ▼
+[ Add to Bag & Instant Cart ]                              [ Custom Sourcing Ticket Modal ]
+             │                                                       │
+             ▼                                                       ▼
+[ Atomic ACID Checkout ]                                   [ Injected into Demand Radar ]
+  • Idempotency Key validation
+  • `BEGIN IMMEDIATE` stock lock
+  • Order committed + stock decremented
+             │
+             ▼
+[ Real-Time Orders Dashboard (`#orders`) ]
+  • Step Tracker: Confirmed ──> Packed ──> Dispatched ──> Delivered
+  • Live Waybill: Blue Dart Courier tracking with AWB number
+  • Tax Invoice: Downloadable GST invoice receipt
+  • 1-Click Cancellation: Atomically restores inventory stock
+```
+
+### Workflow 2: Closed-Loop Demand Radar & 1-Click Catalog Fulfillment
+```
+[ Shopper Submits Unmet Demand ] ──> `POST /api/demand/request`
+                                                │
+                                                ▼
+                                    [ `demand_signals` Table ]
+                                                │
+                                                ▼
+                                   [ Aggregated Demand Radar ]
+                                • Grouped by query + category
+                                • Velocity curve & lost GMV quantified
+                                                │
+                                                ▼
+                                  [ Merchant Clicks "Supply to Catalog" ]
+                                                │
+                                                ▼
+                                  `POST /api/admin/demand/fulfill`
+                                                │
+                         ┌──────────────────────┴──────────────────────┐
+                         ▼                                             ▼
+             [ Live Product Provisioning ]               [ Audit Trail & Status Sync ]
+           • Smart studio image matching               • Inserted into `fulfilled_demands`
+           • +15 units added to catalog                • Resolved from active demand signals
+           • Instant search enabled across store       • Displayed under "All Fulfilled" tab
+```
+
+### Workflow 3: Dual-Engine Multilingual Voice Commerce
+```
+[ Shopper Speaks in Kannada / Hindi / English ]
+             │
+             ▼
+[ Browser Web Audio Stream ]
+  • 16kHz mono PCM buffer capture
+  • Live input volume diagnostic monitor
+             │
+             ├────────────────────────────────────────────────────────┐
+             ▼                                                        ▼
+[ Engine A: Native SpeechRecognition ]              [ Engine B: Gnani Prisma Cloud AI ]
+  • Zero-latency interim transcript                   • Deep Indic acoustic model (kn/hi/ta/en)
+  • Primary browser client execution                  • Automatic fallback if local mic blocked
+             │                                                        │
+             └────────────────────────┬───────────────────────────────┘
+                                      ▼
+                      [ Final Validated Transcript ]
+                                      │
+                                      ▼
+                      [ Spoken Assistant Reply via Gnani Timbre TTS ]
+```
+
+### Workflow 4: Client-Side State Persistence & URL Hash Routing
+```
+[ User Navigates to Any View ]
+  • `#store`    ──> Atelier Catalog & Collection View
+  • `#merchant` ──> Autonomous Demand Radar & RFP Studio
+  • `#orders`   ──> Live Orders Dashboard & Shipment Tracker
+  • `#search`   ──> Parametric Intent Search Results & Chips
+             │
+             ▼
+[ Page Refresh (F5 / Browser Reload) ]
+  • Evaluates URL Hash + `sessionStorage` fallback
+  • Prevents unwanted reset to home page
+  • Restores exact view, filters, search results, and modal state
+  • Fully compatible with native browser Back/Forward navigation
 ```
 
 ---
@@ -144,6 +246,7 @@ ShelfSense/
 │   ├── frontend/
 │   │   ├── src/
 │   │   │   ├── components/
+│   │   │   │   ├── OrdersView.jsx            # Customer orders dashboard, tracking & cancellation
 │   │   │   │   ├── SearchResultsView.jsx     # Intent search studio, chips, live results
 │   │   │   │   └── MerchantDemandRadar.jsx   # Merchant intelligence console & drawer
 │   │   │   ├── services/
@@ -218,7 +321,14 @@ npm run dev
 | :--- | :--- | :--- |
 | `GET` | `/api/products` | Returns filtered products by keyword, category, price, and stock |
 | `GET` | `/api/products/{id}` | Returns single product record with parsed JSON attributes |
+| `POST` | `/api/demand/request` | Submits customer unmet demand signal to Demand Radar |
 | `POST` | `/api/checkout` | ACID transactional checkout decrementing inventory with idempotency |
+
+### Customer Orders & Shipments
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/orders` | Returns all customer orders with enriched product items and shipment status |
+| `POST` | `/api/orders/{order_id}/cancel` | Atomically cancels order, marks status `cancelled`, and restores product stock |
 
 ### AI Intent & Multilingual Voice
 | Method | Endpoint | Description |
