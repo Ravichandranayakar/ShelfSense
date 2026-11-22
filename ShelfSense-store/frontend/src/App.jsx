@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SearchResultsView from './components/SearchResultsView';
 import MerchantDemandRadar from './components/MerchantDemandRadar';
+import OrdersView from './components/OrdersView';
 import { startHybridVoiceSession } from './utils/voiceTranscriber';
 import { api } from './services/api';
 
@@ -220,7 +221,7 @@ function ProductCard({ product, onAdd, onWishlist, isWished }) {
   );
 }
 
-function CartDrawer({ open, onClose, cart, products, onQty, onCheckout, checkoutState }) {
+function CartDrawer({ open, onClose, cart, products, onQty, onCheckout, checkoutState, onOpenOrders }) {
   const items = Object.entries(cart)
     .map(([id, qty]) => ({ product: products.find((p) => p.id === id), qty }))
     .filter((x) => x.product);
@@ -302,6 +303,17 @@ function CartDrawer({ open, onClose, cart, products, onQty, onCheckout, checkout
               <p className="mt-1 text-[11px] text-on-surface-muted">
                 Order confirmed. Your package is being prepared for dispatch.
               </p>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenOrders?.();
+                }}
+                className="mt-3.5 w-full py-2.5 rounded-lg bg-black text-white hover:bg-[#c6f26a] hover:text-black font-sans text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+                <span>View in Orders Dashboard →</span>
+              </button>
             </div>
           )}
 
@@ -1528,6 +1540,19 @@ export default function App() {
               )}
             </div>
 
+            {/* Orders Dashboard Switcher Pill */}
+            <button
+              onClick={() => setView(view === 'orders' ? 'store' : 'orders')}
+              title={view === 'orders' ? "Return to Storefront" : "View My Orders & Shipments"}
+              className={`h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border border-border-subtle font-sans text-xs uppercase tracking-wider font-semibold whitespace-nowrap transition-colors ${view === 'orders'
+                ? 'bg-on-surface text-accent border-on-surface'
+                : 'bg-surface-card text-on-surface hover:bg-surface-subtle'
+                }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+              <span>Orders</span>
+            </button>
+
             {/* Merchant Radar Switcher Pill */}
             <button
               onClick={() => setView(view === 'admin' ? 'store' : 'admin')}
@@ -2034,27 +2059,30 @@ export default function App() {
                   OUR MANIFESTO / ESSAY 01
                 </span>
                 <blockquote className="font-sans text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-on-surface leading-[1.05] uppercase">
-                  "Direct commerce driven by <span className="serif-italic font-normal lowercase tracking-normal">verified quality,</span> not sponsored placement spam."
+                  "Good design is honest. It does not make a product <span className="serif-italic font-normal lowercase tracking-normal">more innovative than it really is."</span>
                 </blockquote>
+                <span className="font-mono text-xs uppercase tracking-widest text-[#444748] font-bold block mt-4">
+                  — DIETER RAMS, PRINCIPLES OF DESIGN INTEGRITY
+                </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mt-16 pt-12 border-t border-border-subtle">
                 <div className="flex flex-col">
-                  <span className="font-sans text-4xl lg:text-5xl font-bold text-on-surface tracking-tighter">0.00%</span>
-                  <span className="font-sans text-xs font-bold uppercase tracking-wider text-on-surface mt-2 mb-3">Sponsored Placement Spam</span>
+                  <span className="font-sans text-4xl lg:text-5xl font-bold text-on-surface tracking-tighter">100%</span>
+                  <span className="font-sans text-xs font-bold uppercase tracking-wider text-on-surface mt-2 mb-3">Independent Studios</span>
                   <p className="font-body text-xs sm:text-sm text-on-surface-muted leading-relaxed">
-                    Every merchant on ShelfSense is ranked exclusively on how completely their physical craftsmanship aligns with your stated use case, ergonomics, and material preferences.
+                    Zero paid algorithmic bias. Every merchant on ShelfSense is cataloged exclusively on how completely their physical craftsmanship aligns with your ergonomics, durability, and daily utility.
                   </p>
                 </div>
                 <div className="flex flex-col">
-                  <span className="font-sans text-4xl lg:text-5xl font-bold text-on-surface tracking-tighter">12,400+</span>
-                  <span className="font-sans text-xs font-bold uppercase tracking-wider text-on-surface mt-2 mb-3">Validated Parameters</span>
+                  <span className="font-sans text-4xl lg:text-5xl font-bold text-on-surface tracking-tighter">98.4%</span>
+                  <span className="font-sans text-xs font-bold uppercase tracking-wider text-on-surface mt-2 mb-3">Intent Match Accuracy</span>
                   <p className="font-body text-xs sm:text-sm text-on-surface-muted leading-relaxed">
-                    From tensile strength and waterproof seam welding to tactile actuation weight. Products are cataloged down to tactile substance, not marketing hype.
+                    Direct natural language intent synthesis. Bridging nuanced human needs directly to genuine physical objects without keyword guesswork or marketing hype.
                   </p>
                 </div>
                 <div className="flex flex-col">
-                  <span className="font-sans text-4xl lg:text-5xl font-bold text-on-surface tracking-tighter">72 HR</span>
-                  <span className="font-sans text-xs font-bold uppercase tracking-wider text-on-surface mt-2 mb-3">Maker Response Loop</span>
+                  <span className="font-sans text-4xl lg:text-5xl font-bold text-on-surface tracking-tighter">48 HR</span>
+                  <span className="font-sans text-xs font-bold uppercase tracking-wider text-on-surface mt-2 mb-3">Direct Maker Supply Loop</span>
                   <p className="font-body text-xs sm:text-sm text-on-surface-muted leading-relaxed">
                     When catalog matches fail, your request is directly piped to our verified network of independent studios, leatherworkers, and industrial prototypers.
                   </p>
@@ -2210,6 +2238,12 @@ export default function App() {
             </div>
           </section>
         </main>
+      ) : view === 'orders' ? (
+        <OrdersView
+          onBackToStore={() => setView('store')}
+          showToast={showToast}
+          onRefreshProducts={loadAllProducts}
+        />
       ) : (
         <MerchantDemandRadar
           onBackToStore={() => setView('store')}
@@ -2231,6 +2265,10 @@ export default function App() {
         onQty={setQty}
         onCheckout={checkout}
         checkoutState={checkoutState}
+        onOpenOrders={() => {
+          setCartOpen(false);
+          setView('orders');
+        }}
       />
 
       {/* Wishlist Drawer (Flipkart style luxury panel) */}

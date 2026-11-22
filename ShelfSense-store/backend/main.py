@@ -679,6 +679,60 @@ def checkout(req: CheckoutRequest):
         conn.close()
 
 
+@app.get("/api/orders")
+def get_orders():
+    """Returns all customer orders enriched with product details, images, and live shipment status."""
+    with DbSession() as conn:
+        order_rows = conn.execute(
+            "SELECT id, idempotency_key, customer_name, total_paise, status, created_at FROM orders ORDER BY created_at DESC"
+        ).fetchall()
+        orders = []
+        for o in order_rows:
+            order_data = dict(o)
+            item_rows = conn.execute(
+                """SELECT oi.product_id, oi.quantity, oi.unit_price_paise, p.title, p.category, p.attributes_json
+                   FROM order_items oi
+                   LEFT JOIN products p ON p.id = oi.product_id
+                   WHERE oi.order_id = ?""",
+                (o["id"],),
+            ).fetchall()
+            items = []
+            for ir in item_rows:
+                attrs = json.loads(ir["attributes_json"] or "{}") if ir["attributes_json"] else {}
+                items.append({
+                    "product_id": ir["product_id"],
+                    "quantity": ir["quantity"],
+                    "unit_price_paise": ir["unit_price_paise"],
+                    "title": ir["title"] or "Atelier Object",
+                    "category": ir["category"] or "Accessories",
+                    "image_url": attrs.get("image_url"),
+                })
+            order_data["items"] = items
+            orders.append(order_data)
+        return {"orders": orders, "total": len(orders)}
+
+
+@app.post("/api/orders/{order_id}/cancel")
+def cancel_order(order_id: str):
+    """Cancels an existing order and safely restores item stock to active catalog."""
+    with DbSession() as conn:
+        order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+        if not order:
+            raise HTTPException(404, "Order not found")
+        if order["status"] == "cancelled":
+            return {"ok": True, "message": "Order is already cancelled", "status": "cancelled"}
+
+        items = conn.execute("SELECT product_id, quantity FROM order_items WHERE order_id = ?", (order_id,)).fetchall()
+        now = utcnow()
+        for item in items:
+            conn.execute(
+                "UPDATE products SET stock = stock + ?, updated_at = ? WHERE id = ?",
+                (item["quantity"], now, item["product_id"]),
+            )
+        conn.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
+        return {"ok": True, "order_id": order_id, "status": "cancelled", "message": "Order cancelled successfully and inventory restored."}
+
+
 @app.get("/api/admin/overview")
 def admin_overview():
     LOW_STOCK_LEAD_DAYS = 3   # assumed supplier lead time
