@@ -8,6 +8,72 @@ const DEMAND_IMAGES = {
   'DMD-0887': 'https://lh3.googleusercontent.com/aida-public/AB6AXuCuQJGJT_l0D8uBa982m5WDVCQ4avAMPlQ7GAvTaWGp0c3DqrAN_81BMaWYw-ISHy0hHfhSoh0A_mqahPyr0CnBX9IlY6c_9eTN-fARlTfjpx_Gsd6b7sl6NeMElchMh4qpVkGqJA3Hi0zXV8aSqowSY_DHMtfmb1RwrQlhg76dBpFKSlcRPooM-8Xi8BxSe80kyPjBNgXmU7sbdqYcRfbg88TEVnEaues8izp52urI',
 };
 
+const DEFAULT_ACTIVE_ITEMS = [
+  {
+    id: 'DMD-0982',
+    clusterCode: 'DMD-0982',
+    badge: 'HIGH VOLUME // TOP UNMET NEED',
+    category: 'CARRY',
+    categoryLabel: 'Carry & Packs // Daily Transit',
+    firstCaptured: '18 days ago · Velocity: +44%',
+    title: 'Waterproof Lightweight Commuter Backpack for College',
+    description: 'Repeated customer queries seeking a lightweight (<900g), college-ready laptop backpack with IPX4+ waterproofing, dedicated 16-inch padded compartment, and minimalist matte silhouette devoid of large ostentatious logos.',
+    specs: ['Waterproof Ballistic / Ripstop', 'Sub-900g Featherweight', '16" Padded Laptop Sleeve', 'G-Hook or Roll-top Enclosure', 'Dual Water Bottle Stretch Pockets'],
+    queriesCount: 64,
+    progressWidth: '88%',
+    budgetRange: '₹1,800 – ₹2,500',
+    sweetSpot: '₹2,200',
+    recentQuery: 'Today, 14:22 IST',
+    location: 'Metro Campus Hub',
+    status: 'Under Review',
+    marginNote: 'High merchant margin potential (estimated 48-52%)',
+    imgKey: 'DMD-0982',
+    alt: 'Matte black waterproof rolltop backpack',
+  },
+  {
+    id: 'DMD-0941',
+    clusterCode: 'DMD-0941',
+    badge: 'EMERGING DEMAND // FAST MOVER',
+    category: 'CARRY',
+    categoryLabel: 'Carry & Packs // Modular Carry',
+    firstCaptured: '9 days ago · Velocity: +62%',
+    title: 'Weatherproof Crossbody Ergonomic Tech Sling (10–14L)',
+    description: 'Shoppers looking for a quick-access sling with ambidextrous strap, waterproof zippers, and internal organizers for iPad Mini, cables, and power bank.',
+    specs: ['Quick-Adjust Ambidextrous Strap', 'Matte Water-Resistant Shell', 'Fleece-Lined Tablet Pocket', 'Hidden Passport Pocket'],
+    queriesCount: 42,
+    progressWidth: '65%',
+    budgetRange: '₹1,400 – ₹1,900',
+    sweetSpot: '₹1,650',
+    recentQuery: 'Yesterday, 19:40 IST',
+    location: 'Bengaluru Tech Corridor',
+    status: 'Sourcing',
+    marginNote: 'Projected margin: 44-48%',
+    imgKey: 'DMD-0941',
+    alt: 'Technical crossbody sling bag',
+  },
+  {
+    id: 'DMD-0887',
+    clusterCode: 'DMD-0887',
+    badge: 'STEADY SPEC // REFINED NICHE',
+    category: 'DESK',
+    categoryLabel: 'Work & Study // Ergonomics',
+    firstCaptured: '24 days ago · Velocity: +18%',
+    title: 'Modular Solid Walnut & Steel Organizing Station',
+    description: 'Demand for a weighted, low-profile desktop station combining wireless charging mat, grooved phone/tablet dock, and pen rest without squeaky acrylic.',
+    specs: ['Solid American Walnut', 'Powder-Coated Steel Rail', 'Integrated Qi Pad Cutout', 'Cork Anti-Scratch Feet'],
+    queriesCount: 38,
+    progressWidth: '55%',
+    budgetRange: '₹1,200 – ₹1,800',
+    sweetSpot: '₹1,450',
+    recentQuery: '2 days ago',
+    location: 'Gurugram Studio District',
+    status: 'New',
+    marginNote: 'Projected margin: 52-56%',
+    imgKey: 'DMD-0887',
+    alt: 'Solid walnut and steel desk organizer',
+  },
+];
+
 export default function MerchantDemandRadar({
   onBackToStore,
   showToast,
@@ -20,73 +86,33 @@ export default function MerchantDemandRadar({
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortBy, setSortBy] = useState('volume');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [demandRadarData, setDemandRadarData] = useState({ signals: [], recent_signals: [] });
-  const [fulfilledItems, setFulfilledItems] = useState([]);
-  const [activeItems, setActiveItems] = useState([
-    {
-      id: 'DMD-0982',
-      clusterCode: 'DMD-0982',
-      badge: 'HIGH VOLUME // TOP UNMET NEED',
-      category: 'CARRY',
-      categoryLabel: 'Carry & Packs // Daily Transit',
-      firstCaptured: '18 days ago · Velocity: +44%',
-      title: 'Waterproof Lightweight Commuter Backpack for College',
-      description: 'Repeated customer queries seeking a lightweight (<900g), college-ready laptop backpack with IPX4+ waterproofing, dedicated 16-inch padded compartment, and minimalist matte silhouette devoid of large ostentatious logos.',
-      specs: ['Waterproof Ballistic / Ripstop', 'Sub-900g Featherweight', '16" Padded Laptop Sleeve', 'G-Hook or Roll-top Enclosure', 'Dual Water Bottle Stretch Pockets'],
-      queriesCount: 64,
-      progressWidth: '88%',
-      budgetRange: '₹1,800 – ₹2,500',
-      sweetSpot: '₹2,200',
-      recentQuery: 'Today, 14:22 IST',
-      location: 'Metro Campus Hub',
-      status: 'Under Review',
-      marginNote: 'High merchant margin potential (estimated 48-52%)',
-      imgKey: 'DMD-0982',
-      alt: 'Matte black waterproof rolltop backpack',
-    },
-    {
-      id: 'DMD-0941',
-      clusterCode: 'DMD-0941',
-      badge: 'EMERGING DEMAND // FAST MOVER',
-      category: 'CARRY',
-      categoryLabel: 'Carry & Packs // Modular Carry',
-      firstCaptured: '9 days ago · Velocity: +62%',
-      title: 'Weatherproof Crossbody Ergonomic Tech Sling (10–14L)',
-      description: 'Shoppers looking for a quick-access sling with ambidextrous strap, waterproof zippers, and internal organizers for iPad Mini, cables, and power bank.',
-      specs: ['Quick-Adjust Ambidextrous Strap', 'Matte Water-Resistant Shell', 'Fleece-Lined Tablet Pocket', 'Hidden Passport Pocket'],
-      queriesCount: 42,
-      progressWidth: '65%',
-      budgetRange: '₹1,400 – ₹1,900',
-      sweetSpot: '₹1,650',
-      recentQuery: 'Yesterday, 19:40 IST',
-      location: 'Bengaluru Tech Corridor',
-      status: 'Sourcing',
-      marginNote: 'Projected margin: 44-48%',
-      imgKey: 'DMD-0941',
-      alt: 'Technical crossbody sling bag',
-    },
-    {
-      id: 'DMD-0887',
-      clusterCode: 'DMD-0887',
-      badge: 'STEADY SPEC // REFINED NICHE',
-      category: 'DESK',
-      categoryLabel: 'Work & Study // Ergonomics',
-      firstCaptured: '24 days ago · Velocity: +18%',
-      title: 'Modular Solid Walnut & Steel Organizing Station',
-      description: 'Demand for a weighted, low-profile desktop station combining wireless charging mat, grooved phone/tablet dock, and pen rest without squeaky acrylic.',
-      specs: ['Solid American Walnut', 'Powder-Coated Steel Rail', 'Integrated Qi Pad Cutout', 'Cork Anti-Scratch Feet'],
-      queriesCount: 38,
-      progressWidth: '55%',
-      budgetRange: '₹1,200 – ₹1,800',
-      sweetSpot: '₹1,450',
-      recentQuery: '2 days ago',
-      location: 'Gurugram Studio District',
-      status: 'New',
-      marginNote: 'Projected margin: 52-56%',
-      imgKey: 'DMD-0887',
-      alt: 'Solid walnut and steel desk organizer',
-    },
-  ]);
+  const [demandRadarData, setDemandRadarData] = useState({ signals: [], recent_signals: [], fulfilled_signals: [] });
+
+  // Persistent Fulfilled items stored in localStorage & backend
+  const [fulfilledItems, setFulfilledItems] = useState(() => {
+    try {
+      const saved = localStorage.getItem('shelfsense_fulfilled_items');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [activeItems, setActiveItems] = useState(() => {
+    try {
+      const saved = localStorage.getItem('shelfsense_fulfilled_items');
+      const fulfilledList = saved ? JSON.parse(saved) : [];
+      const fulfilledTitles = new Set(fulfilledList.map((x) => (x.title || '').toLowerCase().trim()));
+      return DEFAULT_ACTIVE_ITEMS.filter((item) => !fulfilledTitles.has((item.title || '').toLowerCase().trim()));
+    } catch {
+      return DEFAULT_ACTIVE_ITEMS;
+    }
+  });
+
+  // Scroll to top on tab or view mode switch
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [activeTab, viewMode]);
 
   // Drawer & Modal States
   const [selectedDrawerItem, setSelectedDrawerItem] = useState(null);
@@ -134,7 +160,80 @@ export default function MerchantDemandRadar({
     try {
       const res = await fetch(getApiUrl('/api/admin/demand-radar'));
       const data = await res.json();
-      setDemandRadarData(data || { signals: [], recent_signals: [] });
+      setDemandRadarData(data || { signals: [], recent_signals: [], fulfilled_signals: [] });
+
+      // 1. Sync fulfilled items from backend
+      if (Array.isArray(data?.fulfilled_signals) && data.fulfilled_signals.length > 0) {
+        setFulfilledItems((prev) => {
+          const map = new Map();
+          prev.forEach((item) => map.set((item.title || item.query || item.id).toLowerCase().trim(), item));
+          data.fulfilled_signals.forEach((sig) => {
+            const key = (sig.title || sig.query || sig.id).toLowerCase().trim();
+            if (!map.has(key)) {
+              map.set(key, {
+                id: sig.id,
+                title: sig.title || sig.query,
+                description: sig.description || `Fulfilled customer query: ${sig.query}`,
+                category: sig.category || 'Carry',
+                stockAdded: sig.stock_added || 15,
+                fulfilledAt: sig.fulfilled_at ? new Date(sig.fulfilled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
+                image_url: sig.image_url,
+              });
+            }
+          });
+          const merged = Array.from(map.values());
+          try {
+            localStorage.setItem('shelfsense_fulfilled_items', JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
+      }
+
+      // 2. Dynamically add active customer requests from data.signals to activeItems
+      if (Array.isArray(data?.signals) && data.signals.length > 0) {
+        setActiveItems((prev) => {
+          const existingTitles = new Set(prev.map((x) => (x.title || '').toLowerCase().trim()));
+          let fulfilledTitles = new Set();
+          try {
+            const savedFulfilled = localStorage.getItem('shelfsense_fulfilled_items');
+            const fulfilledList = savedFulfilled ? JSON.parse(savedFulfilled) : [];
+            fulfilledTitles = new Set(fulfilledList.map((x) => (x.title || x.query || '').toLowerCase().trim()));
+          } catch {}
+
+          const newDynamic = [];
+          data.signals.forEach((sig, idx) => {
+            const cleanQuery = (sig.query || '').trim();
+            const lower = cleanQuery.toLowerCase();
+            if (!cleanQuery) return;
+            if (existingTitles.has(lower) || fulfilledTitles.has(lower)) return;
+            if (lower.includes('backpack') || lower.includes('sling') || lower.includes('walnut')) return;
+
+            newDynamic.push({
+              id: `DMD-REQ-${sig.query.slice(0, 8)}`,
+              clusterCode: `DMD-CUST-${idx + 1}`,
+              badge: 'CUSTOMER REQUEST // UNMET GAP',
+              category: (sig.category || 'CARRY').toUpperCase(),
+              categoryLabel: `${sig.category || 'Carry & Accessories'} // Live Buyer Gap`,
+              firstCaptured: sig.first_seen ? `${new Date(sig.first_seen).toLocaleDateString()} · Active` : 'Just now',
+              title: cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1),
+              description: `Shoppers actively requested this item on your storefront. Captured ${sig.signal_count} verified buyer query.`,
+              specs: ['Verified Shopper Intent', 'Zero Catalog Matches', 'Immediate Supply Opportunity'],
+              queriesCount: sig.signal_count || 1,
+              progressWidth: '75%',
+              budgetRange: sig.max_budget_paise ? `₹${(sig.max_budget_paise / 100).toLocaleString('en-IN')}` : '₹1,500 – ₹2,500',
+              sweetSpot: sig.max_budget_paise ? `₹${(sig.max_budget_paise / 100).toLocaleString('en-IN')}` : '₹1,999',
+              recentQuery: 'Recent search query',
+              location: 'Online Storefront',
+              status: 'Awaiting Supply',
+              marginNote: 'Immediate catalog expansion',
+              imgKey: 'custom',
+              alt: cleanQuery,
+            });
+          });
+
+          return [...newDynamic, ...prev];
+        });
+      }
     } catch {
       // Graceful
     }
@@ -169,15 +268,19 @@ export default function MerchantDemandRadar({
           stock: 15,
         }),
       });
-      setActiveItems((prev) => prev.filter((x) => x.id !== item.id));
-      setFulfilledItems((prev) => [
-        {
-          ...item,
-          fulfilledAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          stockAdded: 15,
-        },
-        ...prev,
-      ]);
+      setActiveItems((prev) => prev.filter((x) => x.id !== item.id && x.title !== item.title));
+      const newFulfilledItem = {
+        ...item,
+        fulfilledAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        stockAdded: 15,
+      };
+      setFulfilledItems((prev) => {
+        const updated = [newFulfilledItem, ...prev.filter((x) => (x.title || '').toLowerCase() !== (item.title || '').toLowerCase())];
+        try {
+          localStorage.setItem('shelfsense_fulfilled_items', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
       showToast?.(`Supplied "${item.title}" to store catalog (15 units added). Demand gap closed!`);
       if (onRefreshData) {
         await onRefreshData();
@@ -888,6 +991,71 @@ export default function MerchantDemandRadar({
                       </div>
                     </article>
                   )}
+
+                  {/* Dynamic In-bound Customer Requests */}
+                  {activeItems
+                    .filter((x) => !['DMD-0982', 'DMD-0941', 'DMD-0887'].includes(x.id))
+                    .map((item) => (
+                      <article
+                        key={item.id}
+                        className="w-full bg-white border border-[#dcdad4] hover:border-black transition-all rounded-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 shadow-sm"
+                      >
+                        <div className="lg:col-span-4 bg-[#eae8e2] relative min-h-[220px] lg:min-h-full flex items-center justify-center p-6 border-b lg:border-b-0 lg:border-r border-[#dcdad4]">
+                          <div className="flex flex-col items-center justify-center text-center p-4">
+                            <span className="material-symbols-outlined text-[48px] text-[#4b6700] mb-2">contact_support</span>
+                            <span className="font-mono text-sm text-[#1b1c18] font-bold uppercase">{item.title}</span>
+                            <span className="text-xs text-[#444748] mt-1">Live Storefront Query Signal</span>
+                          </div>
+                          <div className="absolute top-4 left-4">
+                            <span className="px-2.5 py-1 bg-[#c6f26a] text-black font-mono text-[10px] font-bold rounded-full">
+                              {item.badge || 'CUSTOMER REQUEST // UNMET GAP'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="lg:col-span-8 p-6 lg:p-8 flex flex-col justify-between">
+                          <div>
+                            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                              <span className="font-mono text-xs text-[#4b6700] uppercase tracking-widest font-bold">
+                                {item.categoryLabel || 'Live Customer Intent'}
+                              </span>
+                              <span className="font-mono text-xs text-[#444748]">
+                                {item.firstCaptured || 'Just now'}
+                              </span>
+                            </div>
+                            <h3 className="font-sans text-2xl font-bold text-[#1b1c18] mb-2 leading-tight">
+                              {item.title}
+                            </h3>
+                            <p className="font-body text-sm text-[#444748] mb-4 leading-relaxed">
+                              {item.description}
+                            </p>
+                            <div className="p-4 bg-[#f5f3ed] rounded-lg border border-[#eae8e2] flex flex-wrap gap-6 text-xs font-mono mb-4">
+                              <div>
+                                <span className="text-[#444748]">Budget Range: </span>
+                                <span className="font-bold text-[#1b1c18]">{item.sweetSpot}</span>
+                              </div>
+                              <div>
+                                <span className="text-[#444748]">Captured Volume: </span>
+                                <span className="font-bold text-[#166534]">{item.queriesCount} Verified Customer Signals</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="pt-4 border-t border-[#eae8e2] flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-1.5 text-xs font-mono text-[#166534]">
+                              <span className="material-symbols-outlined text-[16px]">bolt</span>
+                              <span>Ready for catalog injection</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleFulfillRequest(item)}
+                              className="px-4 py-2 bg-[#c6f26a] hover:bg-black hover:text-[#c6f26a] text-black font-sans text-xs uppercase tracking-wider font-bold rounded transition-colors flex items-center gap-1.5 shadow-sm"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">task_alt</span>
+                              <span>Supply to Catalog (+15 stock)</span>
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
                 </div>
               </div>
             </section>

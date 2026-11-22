@@ -39,13 +39,22 @@ except ImportError:
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BASE_DIR.parent
-_db_env = os.getenv("DATABASE_PATH", "").strip()
-if _db_env:
-    DB_PATH = Path(_db_env)
-    if not DB_PATH.is_absolute():
-        DB_PATH = (BASE_DIR / DB_PATH).resolve()
-else:
-    DB_PATH = (BASE_DIR / "store.db").resolve()
+
+def resolve_db_path() -> Path:
+    env_val = os.getenv("DATABASE_PATH", "").strip()
+    if env_val:
+        p = Path(env_val)
+        if p.is_absolute():
+            return p
+        if (PROJECT_DIR / p).exists():
+            return (PROJECT_DIR / p).resolve()
+        if (BASE_DIR / p).exists():
+            return (BASE_DIR / p).resolve()
+        cleaned = re.sub(r'^\.?/?backend/', '', env_val)
+        return (BASE_DIR / cleaned).resolve()
+    return (BASE_DIR / "store.db").resolve()
+
+DB_PATH = resolve_db_path()
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 LOW_STOCK_THRESHOLD = int(os.getenv("LOW_STOCK_THRESHOLD", "10"))
 STEPFUN_API_KEY = os.getenv("STEPFUN_API_KEY", "").strip()
@@ -95,7 +104,7 @@ def get_ai_config() -> tuple[str | None, str, str, str]:
 
 load_env_file()
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-DB_PATH = Path(os.getenv("DATABASE_PATH", BASE_DIR / "store.db"))
+DB_PATH = resolve_db_path()
 LOW_STOCK_THRESHOLD = int(os.getenv("LOW_STOCK_THRESHOLD", "10"))
 
 
@@ -296,6 +305,18 @@ def init_db() -> None:
                 max_budget_paise INTEGER,
                 source TEXT NOT NULL DEFAULT 'customer',
                 created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS fulfilled_demands (
+                id TEXT PRIMARY KEY,
+                query TEXT NOT NULL,
+                title TEXT NOT NULL,
+                category TEXT,
+                description TEXT,
+                price_paise INTEGER,
+                stock_added INTEGER,
+                product_id TEXT,
+                image_url TEXT,
+                fulfilled_at TEXT NOT NULL
             );
             """
         )
@@ -912,7 +933,17 @@ def demand_radar():
             "last_seen": r["last_seen"],
         })
     recent_signals = [dict(r) for r in recent_rows]
-    return {"signals": signals, "total": len(signals), "recent_signals": recent_signals}
+    try:
+        fulfilled_rows = conn.execute(
+            """SELECT id, query, title, category, description, price_paise, stock_added, product_id, image_url, fulfilled_at
+               FROM fulfilled_demands
+               ORDER BY fulfilled_at DESC
+               LIMIT 50"""
+        ).fetchall()
+        fulfilled_signals = [dict(r) for r in fulfilled_rows]
+    except Exception:
+        fulfilled_signals = []
+    return {"signals": signals, "total": len(signals), "recent_signals": recent_signals, "fulfilled_signals": fulfilled_signals}
 
 
 @app.post("/api/admin/demand/fulfill")
@@ -971,6 +1002,17 @@ def fulfill_demand(req: FulfillDemandRequest):
 
         # Clear unmet demand signal for this query
         conn.execute("DELETE FROM demand_signals WHERE query = ?", (req.query,))
+
+        # Record persistent fulfillment audit entry
+        try:
+            ful_id = f"ful_{uuid.uuid4().hex[:8]}"
+            conn.execute(
+                """INSERT INTO fulfilled_demands (id, query, title, category, description, price_paise, stock_added, product_id, image_url, fulfilled_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (ful_id, req.query, product_title, category, f"Customer demand fulfilled: {req.query}", price_paise, req.stock, product_id, image_url, utcnow())
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record fulfilled_demands: {e}")
 
     return {"ok": True, "product_id": product_id, "product_title": product_title, "stock_added": req.stock}
 

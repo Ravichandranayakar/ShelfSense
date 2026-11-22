@@ -48,6 +48,7 @@ export default function SearchResultsView({
 
   useEffect(() => {
     setQueryInput(initialQuery || '');
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [initialQuery]);
   const [activeCategory, setActiveCategory] = useState('all');
   const [priceBracket, setPriceBracket] = useState('all'); // 'all' | 'under1000' | '1000-2500' | 'above2500'

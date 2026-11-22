@@ -875,6 +875,11 @@ export default function App() {
     fetchAdminOverview();
   }, [fetchAdminOverview]);
 
+  // Viewport scroll reset: Every time the user navigates between views or categories, scroll to top
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [view, selectedCategory]);
+
   // Keyboard shortcut: Cmd+K / Ctrl+K to focus catalog & AI search input
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -2210,7 +2215,10 @@ export default function App() {
           onBackToStore={() => setView('store')}
           showToast={showToast}
           overviewData={adminOverview}
-          onRefreshData={fetchAdminOverview}
+          onRefreshData={async () => {
+            await fetchAdminOverview();
+            await loadAllProducts();
+          }}
         />
       )}
 
