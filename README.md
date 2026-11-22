@@ -9,6 +9,8 @@
 [![Gnani.ai](https://img.shields.io/badge/Voice_AI-Gnani_Prisma_v3.0_+_Timbre_v3.0-FF6F00.svg)](https://gnani.ai)
 [![Render](https://img.shields.io/badge/Deployment-Render_Blueprint_Ready-46E3B7.svg?logo=render&logoColor=white)](https://render.com)
 
+Live https://shelfsense-backend-pjko.onrender.com/
+
 ---
 
 ## Executive Summary
