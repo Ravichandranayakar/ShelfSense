@@ -775,8 +775,25 @@ function AdminPanel({ onBackToStore }) {
   );
 }
 
+function getInitialView() {
+  const hash = (typeof window !== 'undefined' ? window.location.hash : '')
+    .replace(/^#\/?/, '')
+    .toLowerCase()
+    .trim();
+  if (['orders', 'admin', 'merchant', 'search'].includes(hash)) {
+    return hash === 'merchant' ? 'admin' : hash;
+  }
+  try {
+    const saved = sessionStorage.getItem('shelfsense_active_view');
+    if (['store', 'orders', 'admin', 'search'].includes(saved)) {
+      return saved;
+    }
+  } catch {}
+  return 'store';
+}
+
 export default function App() {
-  const [view, setView] = useState('store'); // 'store' | 'admin'
+  const [view, setView] = useState(getInitialView); // 'store' | 'admin' | 'orders' | 'search'
   const [products, setProducts] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [cart, setCart] = useState({});
@@ -817,9 +834,38 @@ export default function App() {
   }, [catalogSearch, allProducts]);
 
   // AI Shopping Search State (Hero Intent Console only)
-  const [intentInput, setIntentInput] = useState('');
+  const [intentInput, setIntentInput] = useState(() => {
+    try {
+      return sessionStorage.getItem('shelfsense_intent_input') || '';
+    } catch {
+      return '';
+    }
+  });
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchResult, setSearchResult] = useState(null);
+  const [searchResult, setSearchResult] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('shelfsense_search_result');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('shelfsense_intent_input', intentInput);
+    } catch {}
+  }, [intentInput]);
+
+  useEffect(() => {
+    try {
+      if (searchResult) {
+        sessionStorage.setItem('shelfsense_search_result', JSON.stringify(searchResult));
+      } else {
+        sessionStorage.removeItem('shelfsense_search_result');
+      }
+    } catch {}
+  }, [searchResult]);
   const [demandQuery, setDemandQuery] = useState('');
   const [demandCategory, setDemandCategory] = useState('bags');
   const [demandBudget, setDemandBudget] = useState('1800');
@@ -891,6 +937,32 @@ export default function App() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [view, selectedCategory]);
+
+  // Keep active view strictly persistent across browser reloads & URL hash
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('shelfsense_active_view', view);
+    } catch {}
+    const targetHash = view === 'store' ? '' : `#${view === 'admin' ? 'merchant' : view}`;
+    const currentHash = window.location.hash;
+    if (currentHash !== targetHash && !(currentHash === '' && targetHash === '')) {
+      const newUrl = window.location.pathname + window.location.search + targetHash;
+      window.history.replaceState(null, '', newUrl);
+    }
+  }, [view]);
+
+  // Support browser Back/Forward navigation between views
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase().trim();
+      if (hash === 'orders') setView('orders');
+      else if (hash === 'merchant' || hash === 'admin') setView('admin');
+      else if (hash === 'search') setView('search');
+      else if (!hash || hash === 'store') setView('store');
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   // Keyboard shortcut: Cmd+K / Ctrl+K to focus catalog & AI search input
   useEffect(() => {
