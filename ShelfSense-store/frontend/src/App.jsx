@@ -1627,19 +1627,7 @@ export default function App() {
               <span>{view === 'admin' ? 'Storefront' : 'Merchant Radar'}</span>
             </button>
 
-            {/* 2. Cart Trigger */}
-            <button
-              className="h-9 flex items-center gap-2 px-3.5 rounded-full bg-on-surface text-white hover:bg-black transition-colors font-sans text-xs tracking-wider uppercase font-semibold whitespace-nowrap shadow-sm"
-              onClick={() => setCartOpen(true)}
-            >
-              <span className="material-symbols-outlined text-[16px]">shopping_cart</span>
-              <span>Cart</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-accent text-on-surface font-bold text-[10px] leading-tight">
-                {cartCount}
-              </span>
-            </button>
-
-            {/* 3. Orders Dashboard Switcher Pill */}
+            {/* 2. Orders Dashboard Switcher Pill (Beside Merchant Radar) */}
             <button
               onClick={() => setView(view === 'orders' ? 'store' : 'orders')}
               title={view === 'orders' ? "Return to Storefront" : "View My Orders & Shipments"}
@@ -1650,6 +1638,18 @@ export default function App() {
             >
               <span className="material-symbols-outlined text-[16px]">receipt_long</span>
               <span>Orders</span>
+            </button>
+
+            {/* 3. Cart Trigger (After Orders) */}
+            <button
+              className="h-9 flex items-center gap-2 px-3.5 rounded-full bg-on-surface text-white hover:bg-black transition-colors font-sans text-xs tracking-wider uppercase font-semibold whitespace-nowrap shadow-sm"
+              onClick={() => setCartOpen(true)}
+            >
+              <span className="material-symbols-outlined text-[16px]">shopping_cart</span>
+              <span>Cart</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-accent text-on-surface font-bold text-[10px] leading-tight">
+                {cartCount}
+              </span>
             </button>
           </div>
         </div>
@@ -2261,10 +2261,10 @@ export default function App() {
                     <div className="flex items-center justify-between border-b border-[#D8CEB9] pb-3 mb-3">
                       <div>
                         <span className="font-mono text-[10px] uppercase tracking-widest text-[#7C7462] block font-bold">
-                          DEMAND-DRIVEN SOURCING PROTOCOL
+                          HOW WE SOURCE FOR YOU
                         </span>
                         <span className="font-sans text-xs font-bold text-[#2B271F] uppercase tracking-wider">
-                          DIRECT COMMERCE ARCHITECTURE · LIVE FULFILLMENT
+                          DIRECT FROM MAKERS · HANDCRAFTED QUALITY
                         </span>
                       </div>
                     </div>
