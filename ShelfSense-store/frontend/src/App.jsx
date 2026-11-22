@@ -1540,20 +1540,7 @@ export default function App() {
               )}
             </div>
 
-            {/* Orders Dashboard Switcher Pill */}
-            <button
-              onClick={() => setView(view === 'orders' ? 'store' : 'orders')}
-              title={view === 'orders' ? "Return to Storefront" : "View My Orders & Shipments"}
-              className={`h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border border-border-subtle font-sans text-xs uppercase tracking-wider font-semibold whitespace-nowrap transition-colors ${view === 'orders'
-                ? 'bg-on-surface text-accent border-on-surface'
-                : 'bg-surface-card text-on-surface hover:bg-surface-subtle'
-                }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">receipt_long</span>
-              <span>Orders</span>
-            </button>
-
-            {/* Merchant Radar Switcher Pill */}
+            {/* 1. Demand Merchant Switcher Pill */}
             <button
               onClick={() => setView(view === 'admin' ? 'store' : 'admin')}
               title={view === 'admin' ? "Return to Storefront" : "Open Merchant Demand Radar"}
@@ -1568,7 +1555,7 @@ export default function App() {
               <span>{view === 'admin' ? 'Storefront' : 'Merchant Radar'}</span>
             </button>
 
-            {/* Cart Trigger */}
+            {/* 2. Cart Trigger */}
             <button
               className="h-9 flex items-center gap-2 px-3.5 rounded-full bg-on-surface text-white hover:bg-black transition-colors font-sans text-xs tracking-wider uppercase font-semibold whitespace-nowrap shadow-sm"
               onClick={() => setCartOpen(true)}
@@ -1578,6 +1565,19 @@ export default function App() {
               <span className="px-1.5 py-0.5 rounded-full bg-accent text-on-surface font-bold text-[10px] leading-tight">
                 {cartCount}
               </span>
+            </button>
+
+            {/* 3. Orders Dashboard Switcher Pill */}
+            <button
+              onClick={() => setView(view === 'orders' ? 'store' : 'orders')}
+              title={view === 'orders' ? "Return to Storefront" : "View My Orders & Shipments"}
+              className={`h-9 inline-flex items-center gap-1.5 px-3.5 rounded-full border border-border-subtle font-sans text-xs uppercase tracking-wider font-semibold whitespace-nowrap transition-colors ${view === 'orders'
+                ? 'bg-on-surface text-accent border-on-surface'
+                : 'bg-surface-card text-on-surface hover:bg-surface-subtle'
+                }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+              <span>Orders</span>
             </button>
           </div>
         </div>
