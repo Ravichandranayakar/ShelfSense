@@ -350,28 +350,3 @@ npm run dev
 | `POST` | `/api/admin/restock-draft` | Generates supplier replenishment email drafts |
 
 ---
-
-## Concurrency Validation & Stress Testing
-
-ShelfSense includes a concurrency test harness to verify ACID isolation and prevent overselling race conditions under heavy load:
-
-```bash
-# Simulates 50 simultaneous checkout requests against a product with only 5 units in stock
-python scripts/stress_test.py --product prod_001 --stock 5 --attempts 50
-```
-
-```text
-Successful orders: 5
-Rejected (insufficient stock): 45
-Final stock: 0
-PASS: Concurrency test passed. Zero oversell.
-```
-
----
-
-## Security & Architectural Standards
-
-- **Zero Secrets in Code:** Credentials reside exclusively in `.env` and environment variables (enforced via `.gitignore`).
-- **Idempotent Checkout:** UUID tokens prevent duplicate charges across unstable mobile connections.
-- **Defensive API Client:** Cross-domain CORS protection and automatic error boundary wrappers prevent white-screen crashes.
-- **Optimized Assets:** High-resolution local studio photography eliminates third-party CDN rate-limit failures (HTTP 429).
